@@ -14,7 +14,7 @@ import {
 //   capacity   -3..+3   per member  (current bandwidth, not a fixed trait)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = "joymatrix-state-v1";
+const STORAGE_KEY = "joy-matrix-state-v1";
 
 const DEMO_STATE = {
   goal: {
@@ -280,7 +280,7 @@ export default function App() {
 
   // inject fonts
   useEffect(() => {
-    const id = "joymatrix-fonts";
+    const id = "joy-matrix-fonts";
     if (document.getElementById(id)) return;
     const link = document.createElement("link");
     link.id = id; link.rel = "stylesheet";
@@ -369,7 +369,7 @@ export default function App() {
       <header style={{ padding: "32px 20px 16px", maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <div style={{ fontFamily: "Geist Mono, monospace", fontSize: 11, letterSpacing: "0.18em", color: colors.inkSoft }}>
-            JOYMATRIX · v1
+            JOY-MATRIX · v1
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={reset} title="Load demo data" style={btnGhost}>
