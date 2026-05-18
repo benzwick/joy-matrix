@@ -17,7 +17,7 @@ import {
 
 const STORAGE_KEY = "joy-matrix-state-v1";
 const THEME_STORAGE_KEY = "joy-matrix-theme-v1";
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const DEMO_STATE = {
   schemaVersion: SCHEMA_VERSION,
@@ -25,6 +25,12 @@ const DEMO_STATE = {
     from: "scattered MVP, no users",
     to: "launched product loved by 1,000 users",
   },
+  categories: [
+    { id: "c-eng",  name: "Engineering" },
+    { id: "c-des",  name: "Design" },
+    { id: "c-mkt",  name: "Marketing" },
+    { id: "c-ops",  name: "Ops & admin" },
+  ],
   members: [
     { id: "m1", name: "Maya", capacity: 2 },
     { id: "m2", name: "Jordan", capacity: 0 },
@@ -91,6 +97,7 @@ const DEMO_STATE = {
 const EMPTY_STATE = {
   schemaVersion: SCHEMA_VERSION,
   goal: { from: "", to: "" },
+  categories: [],
   members: [],
   tasks: [],
 };
@@ -98,7 +105,10 @@ const EMPTY_STATE = {
 // Forward-only migration: bring legacy state objects up to current schema.
 function migrateState(s) {
   if (!s || typeof s !== "object") return null;
-  if (!s.schemaVersion) return { schemaVersion: SCHEMA_VERSION, ...s };
+  if (!s.schemaVersion) s = { schemaVersion: 1, ...s };
+  if (s.schemaVersion < 2) {
+    s = { ...s, schemaVersion: 2, categories: s.categories || [] };
+  }
   return s;
 }
 
@@ -968,6 +978,8 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
         action={<button onClick={addTask} style={btnPrimary}><Plus size={14}/> add task</button>}
       />
 
+      <CategoriesBar state={state} update={update} />
+
       {state.tasks.length === 0 && (
         <Empty>No tasks yet.</Empty>
       )}
@@ -1230,6 +1242,71 @@ function SectionHead({ eyebrow, title, sub, action }) {
         <div style={{ fontSize: 13, color: colors.inkSoft, fontFamily: "var(--joy-font-head)" }}>{sub}</div>
       </div>
       {action}
+    </div>
+  );
+}
+
+function CategoriesBar({ state, update }) {
+  const categories = state.categories || [];
+  const addCategory = () => {
+    const name = prompt("Category name?");
+    if (!name || !name.trim()) return;
+    update(s => {
+      s.categories = s.categories || [];
+      s.categories.push({ id: "c-" + Date.now(), name: name.trim() });
+      return s;
+    });
+  };
+  const renameCategory = (id, current) => {
+    const name = prompt("Rename category:", current);
+    if (!name || !name.trim()) return;
+    update(s => {
+      const c = (s.categories || []).find(x => x.id === id);
+      if (c) c.name = name.trim();
+      return s;
+    });
+  };
+  const removeCategory = (id) => {
+    if (!confirm("Delete this category? Tasks tagged with it will become uncategorized.")) return;
+    update(s => {
+      s.categories = (s.categories || []).filter(c => c.id !== id);
+      (s.tasks || []).forEach(t => { if (t.categoryId === id) t.categoryId = null; });
+      return s;
+    });
+  };
+  return (
+    <div style={{
+      marginTop: 14, marginBottom: 4, display: "flex", alignItems: "center",
+      gap: 8, flexWrap: "wrap",
+    }}>
+      <span style={{ ...mutedLabel, marginRight: 2 }}>CATEGORIES</span>
+      {categories.length === 0 && (
+        <span style={{ fontFamily: "var(--joy-font-head)", fontStyle: "italic", fontSize: 13, color: colors.inkSoft }}>
+          none yet — add one to group tasks
+        </span>
+      )}
+      {categories.map(c => (
+        <span key={c.id} style={{
+          display: "inline-flex", alignItems: "center", gap: 4,
+          padding: "4px 4px 4px 10px", borderRadius: 999,
+          background: "rgba(28,25,22,0.05)", border: `1px solid ${colors.rule}`,
+          fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.04em",
+          color: colors.ink,
+        }}>
+          <button onClick={() => renameCategory(c.id, c.name)} title="Rename" style={{
+            background: "transparent", border: "none", color: "inherit",
+            font: "inherit", letterSpacing: "inherit", cursor: "pointer", padding: 0,
+          }}>{c.name}</button>
+          <button onClick={() => removeCategory(c.id)} title="Delete" style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: 18, height: 18, borderRadius: 999, border: "none",
+            background: "transparent", color: colors.inkSoft, cursor: "pointer",
+          }}><X size={10}/></button>
+        </span>
+      ))}
+      <button onClick={addCategory} style={{
+        ...btnGhost, padding: "4px 10px",
+      }}><Plus size={11}/> add category</button>
     </div>
   );
 }
