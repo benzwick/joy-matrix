@@ -17,7 +17,7 @@ import {
 
 const STORAGE_KEY = "joy-matrix-state-v1";
 const THEME_STORAGE_KEY = "joy-matrix-theme-v1";
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const DEMO_STATE = {
   schemaVersion: SCHEMA_VERSION,
@@ -32,9 +32,33 @@ const DEMO_STATE = {
     { id: "c-ops",  name: "Ops & admin" },
   ],
   members: [
-    { id: "m1", name: "Maya", capacity: 2 },
-    { id: "m2", name: "Jordan", capacity: 0 },
-    { id: "m3", name: "Sam", capacity: -1 },
+    {
+      id: "m1", name: "Maya", capacity: 2,
+      categoryScores: {
+        "c-eng": { pleasure: 1,  talent: 2  },
+        "c-des": { pleasure: 3,  talent: 3  },
+        "c-mkt": { pleasure: -1, talent: 0  },
+        "c-ops": { pleasure: -2, talent: -1 },
+      },
+    },
+    {
+      id: "m2", name: "Jordan", capacity: 0,
+      categoryScores: {
+        "c-eng": { pleasure: 3,  talent: 3  },
+        "c-des": { pleasure: 1,  talent: 0  },
+        "c-mkt": { pleasure: -1, talent: 1  },
+        "c-ops": { pleasure: 1,  talent: 2  },
+      },
+    },
+    {
+      id: "m3", name: "Sam", capacity: -1,
+      categoryScores: {
+        "c-eng": { pleasure: -1, talent: -2 },
+        "c-des": { pleasure: 1,  talent: 1  },
+        "c-mkt": { pleasure: 3,  talent: 3  },
+        "c-ops": { pleasure: -2, talent: -2 },
+      },
+    },
   ],
   tasks: [
     {
@@ -108,6 +132,12 @@ function migrateState(s) {
   if (!s.schemaVersion) s = { schemaVersion: 1, ...s };
   if (s.schemaVersion < 2) {
     s = { ...s, schemaVersion: 2, categories: s.categories || [] };
+  }
+  if (s.schemaVersion < 3) {
+    s = {
+      ...s, schemaVersion: 3,
+      members: (s.members || []).map(m => ({ ...m, categoryScores: m.categoryScores || {} })),
+    };
   }
   return s;
 }
@@ -601,7 +631,7 @@ function AppInner() {
     if (!name) return;
     update(s => {
       const id = "m" + Date.now();
-      s.members.push({ id, name, capacity: 0 });
+      s.members.push({ id, name, capacity: 0, categoryScores: {} });
       // initialize empty scores in each task
       s.tasks.forEach(t => { t.scores[id] = { pleasure: 0, talent: 0 }; });
       return s;
@@ -917,6 +947,8 @@ function TeamView({ state, update, addMember, removeMember, summary }) {
                 />
               </div>
 
+              <MemberBaselines member={m} categories={state.categories || []} update={update} />
+
               {s && (
                 <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px dashed ${colors.rule}` }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -941,6 +973,62 @@ function TeamView({ state, update, addMember, removeMember, summary }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function MemberBaselines({ member, categories, update }) {
+  const [open, setOpen] = useState(false);
+  if (categories.length === 0) return null;
+  const scores = member.categoryScores || {};
+  const setScore = (catId, field, value) => update(st => {
+    const m = st.members.find(x => x.id === member.id);
+    m.categoryScores = m.categoryScores || {};
+    m.categoryScores[catId] = { pleasure: 0, talent: 0, ...m.categoryScores[catId], [field]: value };
+    return st;
+  });
+  // Summary: which categories have non-zero scores
+  const nonZero = categories.filter(c => {
+    const s = scores[c.id] || {};
+    return (s.pleasure || 0) !== 0 || (s.talent || 0) !== 0;
+  });
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: "transparent", border: "none", padding: 0, cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 6, width: "100%",
+          fontFamily: "var(--joy-font-mono)", fontSize: 10, letterSpacing: "0.12em",
+          textTransform: "uppercase", color: colors.inkSoft,
+        }}
+        aria-expanded={open}
+      >
+        <span>CATEGORY BASELINES {nonZero.length > 0 && `· ${nonZero.length}`}</span>
+        <span style={{ marginLeft: "auto", fontSize: 14 }}>{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          {categories.map(c => {
+            const sc = scores[c.id] || { pleasure: 0, talent: 0 };
+            return (
+              <div key={c.id} style={{
+                padding: "8px 10px", background: "rgba(28,25,22,0.025)", borderRadius: 8,
+                display: "grid", gridTemplateColumns: "1fr", gap: 8,
+              }}>
+                <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600, fontSize: 13 }}>{c.name}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <Slider value={sc.pleasure} onChange={(v) => setScore(c.id, "pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
+                  <Slider value={sc.talent} onChange={(v) => setScore(c.id, "talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ fontFamily: "var(--joy-font-head)", fontStyle: "italic", fontSize: 11.5, color: colors.inkSoft, lineHeight: 1.4 }}>
+            Baselines auto-fill task scores when a task is assigned a category. You can still override per task.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
