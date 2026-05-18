@@ -1047,7 +1047,7 @@ function MatrixView({ state, assignments, onEditTask }) {
         gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", gap: 10,
         marginTop: 16, minHeight: 480,
       }}>
-        {["DO", "DELEGATE", "SCHEDULE", "ELIMINATE"].map(q => {
+        {["DO", "SCHEDULE", "DELEGATE", "ELIMINATE"].map(q => {
           const meta = QUADRANT_META[q];
           const cm = cellMeta[q];
           return (
