@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useContext, createContext } from "
 import {
   Plus, X, Sparkles, AlertTriangle, Trash2, RefreshCw,
   Zap, Heart, Brain, Battery, ArrowRight, Target, Users, ListTodo, Grid3x3, Activity,
-  Sun, Moon, Palette, RotateCcw
+  Sun, Moon, Palette, RotateCcw, Download, Upload
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,6 +271,40 @@ function loadState() {
 }
 function saveState(state) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+
+function buildExportEnvelope(state) {
+  return {
+    app: "joy-matrix",
+    schemaVersion: state.schemaVersion ?? SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    project: state,
+  };
+}
+
+function parseImport(raw) {
+  let data;
+  try { data = JSON.parse(raw); }
+  catch (e) { return { error: "File isn't valid JSON." }; }
+  if (!data || typeof data !== "object") return { error: "File doesn't contain a project." };
+  if (data.app !== "joy-matrix") return { error: "Not a Joy-Matrix export." };
+  const incomingVersion = Number(data.schemaVersion ?? 1);
+  if (incomingVersion > SCHEMA_VERSION) {
+    return { error: `Export was created by a newer Joy-Matrix (schema v${incomingVersion}). Update your app and try again.` };
+  }
+  if (!data.project || typeof data.project !== "object") return { error: "Export is missing the project payload." };
+  const project = migrateState(data.project);
+  if (!project) return { error: "Project payload is malformed." };
+  return { project };
+}
+
+function triggerJsonDownload(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a);
+  a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function loadTheme() {
@@ -706,6 +740,25 @@ function AppInner() {
     setState(structuredClone(EMPTY_STATE));
   };
 
+  const exportProject = () => {
+    const envelope = buildExportEnvelope(state);
+    const date = new Date().toISOString().slice(0, 10);
+    triggerJsonDownload(`joy-matrix-${date}.json`, envelope);
+  };
+
+  const fileInputRef = React.useRef(null);
+  const triggerImport = () => fileInputRef.current?.click();
+  const onImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-importing the same filename later
+    if (!file) return;
+    const raw = await file.text();
+    const result = parseImport(raw);
+    if (result.error) { alert(result.error); return; }
+    if (!confirm("Replace current project with imported data? This cannot be undone.")) return;
+    setState(result.project);
+  };
+
   return (
     <div style={{
       minHeight: "100vh", background: colors.paper, color: colors.ink,
@@ -725,6 +778,13 @@ function AppInner() {
             <button onClick={() => setCustomizeOpen(o => !o)} title="Customize colors" style={btnGhost} aria-label="Customize colors">
               <Palette size={12} /> customize
             </button>
+            <button onClick={triggerImport} title="Import project from file" style={btnGhost} aria-label="Import project">
+              <Upload size={12} /> import
+            </button>
+            <button onClick={exportProject} title="Export project as JSON" style={btnGhost} aria-label="Export project">
+              <Download size={12} /> export
+            </button>
+            <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={onImportFile} style={{ display: "none" }} />
             <button onClick={reset} title="Load demo data" style={btnGhost}>
               <RefreshCw size={12} /> demo
             </button>
