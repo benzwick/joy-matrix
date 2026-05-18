@@ -1,9 +1,10 @@
 # The Joy Matrix
 
-An extension of the Eisenhower matrix that scores each task against every team
-member's **pleasure**, **talent**, and current **capacity** (each on a -3 to +3
-scale) — then assigns work to move from A to B as fast as possible while
-eliminating burnout and maximizing joy.
+The Joy Matrix is a multidimensional extension
+of The Eisenhower Matrix for team projects
+that scores tasks by pleasure, talent, and capacity
+to move from A to B as fast as possible
+while eliminating burnout and maximizing joy.
 
 ## Live site
 

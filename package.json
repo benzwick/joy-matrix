@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "license": "Unlicense",
-  "description": "An Eisenhower matrix extension that scores tasks by pleasure, talent, and capacity to maximize joy and eliminate burnout.",
+  "description": "The Joy Matrix is a multidimensional extension of The Eisenhower Matrix for team projects that scores tasks by pleasure, talent, and capacity to maximize joy and eliminate burnout.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
