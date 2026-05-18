@@ -416,5 +416,170 @@ export function buildJoyMatrixTools({ getState, getDerived, update }) {
         return ok({ updated: { title: after.title, urgency: after.urgency, importance: after.importance, effort: after.effort } });
       },
     },
+
+    {
+      name: "set_member_baseline",
+      description:
+        "Set a member's baseline pleasure and/or talent score for one category. Use this when the user describes a durable affinity: e.g. 'Maya hates writing grants but is great at them' sets the Grants category baseline for Maya. Each score is -3..+3.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          member_name: { type: "string" },
+          category_name: { type: "string" },
+          pleasure: { type: "integer", minimum: -3, maximum: 3 },
+          talent: { type: "integer", minimum: -3, maximum: 3 },
+        },
+        required: ["member_name", "category_name"],
+      },
+      execute: async (args) => {
+        const state = getState();
+        const mh = findMember(state, args.member_name);
+        if (mh.error) return err(mh.error, { candidates: mh.candidates });
+        const ch = findCategory(state, args.category_name);
+        if (ch.error) return err(ch.error, { candidates: ch.candidates });
+        const mId = mh.item.id;
+        const cId = ch.item.id;
+        update((s) => {
+          const m = s.members.find((x) => x.id === mId);
+          if (!m) return s;
+          m.categoryScores = m.categoryScores || {};
+          const existing = m.categoryScores[cId] || { pleasure: 0, talent: 0 };
+          if (args.pleasure !== undefined) existing.pleasure = clamp(args.pleasure, -3, 3);
+          if (args.talent !== undefined) existing.talent = clamp(args.talent, -3, 3);
+          m.categoryScores[cId] = existing;
+          return s;
+        });
+        const after = getState().members.find((m) => m.id === mId).categoryScores[cId];
+        return ok({
+          member: mh.item.name,
+          category: ch.item.name,
+          baseline: { pleasure: after.pleasure, talent: after.talent },
+        });
+      },
+    },
+
+    {
+      name: "set_task_score",
+      description:
+        "Set a member's pleasure and/or talent score for one specific task. Locks the score so a later category change won't overwrite it. Use when a user gives task-specific feedback: 'On the auth refactor, Jordan loves it.'",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          task_title: { type: "string" },
+          member_name: { type: "string" },
+          pleasure: { type: "integer", minimum: -3, maximum: 3 },
+          talent: { type: "integer", minimum: -3, maximum: 3 },
+        },
+        required: ["task_title", "member_name"],
+      },
+      execute: async (args) => {
+        const state = getState();
+        const th = findTask(state, args.task_title);
+        if (th.error) return err(th.error, { candidates: th.candidates });
+        const mh = findMember(state, args.member_name);
+        if (mh.error) return err(mh.error, { candidates: mh.candidates });
+        const tId = th.item.id;
+        const mId = mh.item.id;
+        update((s) => {
+          const t = s.tasks.find((x) => x.id === tId);
+          if (!t) return s;
+          const existing = (t.scores || {})[mId] || { pleasure: 0, talent: 0 };
+          if (args.pleasure !== undefined) existing.pleasure = clamp(args.pleasure, -3, 3);
+          if (args.talent !== undefined) existing.talent = clamp(args.talent, -3, 3);
+          existing.autoFilled = false;
+          t.scores = t.scores || {};
+          t.scores[mId] = existing;
+          return s;
+        });
+        const after = getState().tasks.find((t) => t.id === tId).scores[mId];
+        return ok({
+          task: th.item.title,
+          member: mh.item.name,
+          score: { pleasure: after.pleasure, talent: after.talent, autoFilled: !!after.autoFilled },
+        });
+      },
+    },
+
+    {
+      name: "set_task_category",
+      description:
+        "Set or change a task's category. Untouched per-member scores re-seed from each member's baseline for the new category. Pass an empty string or omit category_name to clear the category.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          task_title: { type: "string" },
+          category_name: { type: "string", description: "Category name; empty or omitted to clear." },
+        },
+        required: ["task_title"],
+      },
+      execute: async (args) => {
+        const state = getState();
+        const th = findTask(state, args.task_title);
+        if (th.error) return err(th.error, { candidates: th.candidates });
+        const tId = th.item.id;
+        let categoryId = null;
+        if (args.category_name && args.category_name.trim()) {
+          const ch = findCategory(state, args.category_name);
+          if (ch.error) return err(ch.error, { candidates: ch.candidates });
+          categoryId = ch.item.id;
+        }
+        update((s) => {
+          const t = s.tasks.find((x) => x.id === tId);
+          if (!t) return s;
+          t.categoryId = categoryId;
+          if (!categoryId) return s;
+          // Auto-fill untouched scores from baselines for the new category.
+          s.members.forEach((m) => {
+            const sc = (t.scores || {})[m.id];
+            if (!sc || !sc.autoFilled) return;
+            const baseline = (m.categoryScores || {})[categoryId];
+            if (!baseline) return;
+            t.scores[m.id] = {
+              pleasure: baseline.pleasure ?? 0,
+              talent: baseline.talent ?? 0,
+              autoFilled: true,
+            };
+          });
+          return s;
+        });
+        return ok({ task: th.item.title, categoryId });
+      },
+    },
+
+    {
+      name: "set_task_stakeholder",
+      description:
+        "Set or change a task's stakeholder (who the task is *for*). Pass an empty string or omit stakeholder_name to clear.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          task_title: { type: "string" },
+          stakeholder_name: { type: "string", description: "Stakeholder name; empty or omitted to clear." },
+        },
+        required: ["task_title"],
+      },
+      execute: async (args) => {
+        const state = getState();
+        const th = findTask(state, args.task_title);
+        if (th.error) return err(th.error, { candidates: th.candidates });
+        const tId = th.item.id;
+        let stakeholderId = null;
+        if (args.stakeholder_name && args.stakeholder_name.trim()) {
+          const sh = findStakeholder(state, args.stakeholder_name);
+          if (sh.error) return err(sh.error, { candidates: sh.candidates });
+          stakeholderId = sh.item.id;
+        }
+        update((s) => {
+          const t = s.tasks.find((x) => x.id === tId);
+          if (t) t.stakeholderId = stakeholderId;
+          return s;
+        });
+        return ok({ task: th.item.title, stakeholderId });
+      },
+    },
   ];
 }
