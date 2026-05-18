@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useContext, createContext } from "react";
 import {
   Plus, X, Sparkles, AlertTriangle, Trash2, RefreshCw,
   Zap, Heart, Brain, Battery, ArrowRight, Target, Users, ListTodo, Grid3x3, Activity
@@ -15,8 +15,11 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "joy-matrix-state-v1";
+const THEME_STORAGE_KEY = "joy-matrix-theme-v1";
+const SCHEMA_VERSION = 1;
 
 const DEMO_STATE = {
+  schemaVersion: SCHEMA_VERSION,
   goal: {
     from: "scattered MVP, no users",
     to: "launched product loved by 1,000 users",
@@ -85,10 +88,18 @@ const DEMO_STATE = {
 };
 
 const EMPTY_STATE = {
+  schemaVersion: SCHEMA_VERSION,
   goal: { from: "", to: "" },
   members: [],
   tasks: [],
 };
+
+// Forward-only migration: bring legacy state objects up to current schema.
+function migrateState(s) {
+  if (!s || typeof s !== "object") return null;
+  if (!s.schemaVersion) return { schemaVersion: SCHEMA_VERSION, ...s };
+  return s;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Algorithm
@@ -204,7 +215,7 @@ function buildReasoning(q, best, member) {
 function loadState() {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
-    if (v) return JSON.parse(v);
+    if (v) return migrateState(JSON.parse(v));
   } catch (e) { /* not found or invalid */ }
   return null;
 }
@@ -212,22 +223,72 @@ function saveState(state) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
 }
 
+function loadTheme() {
+  try {
+    const v = localStorage.getItem(THEME_STORAGE_KEY);
+    if (v) return JSON.parse(v);
+  } catch (e) {}
+  return null;
+}
+function saveTheme(theme) {
+  try { localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(theme)); } catch (e) {}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UI primitives
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Logical color names map to CSS variables set by ThemeProvider. Component
+// code keeps using `colors.ink` etc.; the actual hex resolves at paint time
+// from whatever theme is active, so a swap is instant and re-render-free.
 const colors = {
-  paper: "#f4ebdb",
-  paperDeep: "#ece1cb",
-  ink: "#1c1916",
-  inkSoft: "#3a342c",
-  rule: "rgba(28,25,22,0.14)",
-  rust: "#b8492a",
-  rustDeep: "#8e2f17",
-  teal: "#2a5d5d",
-  ochre: "#c98a2c",
-  bone: "#fbf6ec",
+  paper:     "var(--joy-paper)",
+  paperDeep: "var(--joy-paper-deep)",
+  ink:       "var(--joy-ink)",
+  inkSoft:   "var(--joy-ink-soft)",
+  rule:      "var(--joy-rule)",
+  rust:      "var(--joy-rust)",
+  rustDeep:  "var(--joy-rust-deep)",
+  teal:      "var(--joy-teal)",
+  ochre:     "var(--joy-ochre)",
+  bone:      "var(--joy-bone)",
 };
+
+const PRESETS = {
+  workbook: {
+    label: "Workbook",
+    vars: {
+      "--joy-paper":      "#f4ebdb",
+      "--joy-paper-deep": "#ece1cb",
+      "--joy-ink":        "#1c1916",
+      "--joy-ink-soft":   "#3a342c",
+      "--joy-rule":       "rgba(28,25,22,0.14)",
+      "--joy-rust":       "#b8492a",
+      "--joy-rust-deep":  "#8e2f17",
+      "--joy-teal":       "#2a5d5d",
+      "--joy-ochre":      "#c98a2c",
+      "--joy-bone":       "#fbf6ec",
+    },
+  },
+};
+
+const DEFAULT_THEME = { preset: "workbook", overrides: {} };
+
+const ThemeContext = createContext({ theme: DEFAULT_THEME, setTheme: () => {} });
+function useTheme() { return useContext(ThemeContext); }
+
+function ThemeProvider({ children }) {
+  const [theme, setThemeState] = useState(() => loadTheme() || DEFAULT_THEME);
+  useEffect(() => { saveTheme(theme); }, [theme]);
+  const setTheme = (next) => setThemeState((t) => (typeof next === "function" ? next(t) : next));
+  const preset = PRESETS[theme.preset] ?? PRESETS.workbook;
+  const vars = { ...preset.vars, ...(theme.overrides || {}) };
+  return (
+    <ThemeContext.Provider value={{ theme, setTheme }}>
+      <div style={{ ...vars, minHeight: "100vh" }}>{children}</div>
+    </ThemeContext.Provider>
+  );
+}
 
 function Pill({ children, tone = "ink" }) {
   const tones = {
@@ -274,6 +335,14 @@ function Slider({ value, onChange, min, max, step = 1, color = colors.ink, label
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
+  );
+}
+
+function AppInner() {
   const [state, setState] = useState(null);
   const [tab, setTab] = useState("matrix");
   const [editingTask, setEditingTask] = useState(null);
@@ -426,7 +495,7 @@ export default function App() {
       {/* tabs */}
       <nav style={{
         position: "sticky", top: 0, zIndex: 10,
-        background: colors.paper + "ee", backdropFilter: "blur(8px)",
+        background: `color-mix(in srgb, ${colors.paper} 93%, transparent)`, backdropFilter: "blur(8px)",
         borderTop: `1px solid ${colors.rule}`, borderBottom: `1px solid ${colors.rule}`,
         padding: "10px 16px", marginBottom: 4,
       }}>
