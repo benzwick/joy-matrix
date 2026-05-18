@@ -274,7 +274,7 @@ function saveState(state) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
 }
 
-function buildExportEnvelope(state) {
+export function buildExportEnvelope(state) {
   return {
     app: "joy-matrix",
     schemaVersion: state.schemaVersion ?? SCHEMA_VERSION,
@@ -342,7 +342,7 @@ const colors = {
 // Each theme carries its own light + dark palette. The header sun/moon
 // toggle flips `mode` within the active themeId. Themes can be added by
 // dropping another entry into this map with both variants defined.
-const PRESETS = {
+export const PRESETS = {
   talk2view: {
     label: "Talk2View",
     light: {
@@ -964,7 +964,16 @@ function AppInner() {
       </footer>
 
       {customizeOpen && <CustomizePanel onClose={() => setCustomizeOpen(false)} />}
-      <JoyMatrixChat state={state} summary={summary} assignments={assignments} update={update} />
+      <JoyMatrixChat
+        state={state}
+        summary={summary}
+        assignments={assignments}
+        update={update}
+        setTab={setTab}
+        setTheme={setTheme}
+        loadDemo={() => setState(structuredClone(DEMO_STATE))}
+        clearProject={() => setState(structuredClone(EMPTY_STATE))}
+      />
     </div>
   );
 }

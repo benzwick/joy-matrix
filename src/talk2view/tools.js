@@ -12,8 +12,11 @@
 //   { ok: false, error, candidates? }  failure (candidates listed when a
 //                                       name lookup was ambiguous)
 
-import { quadrantOf } from "../App";
+import { PRESETS, buildExportEnvelope, quadrantOf } from "../App";
 import { clamp, findCategory, findMember, findStakeholder, findTask } from "./lookup";
+
+const VALID_TABS = new Set(["matrix", "team", "tasks", "insights"]);
+const VALID_MODES = new Set(["light", "dark"]);
 
 function ok(extra = {}) { return JSON.stringify({ ok: true, ...extra }); }
 function err(error, extra = {}) { return JSON.stringify({ ok: false, error, ...extra }); }
@@ -53,7 +56,7 @@ function projectTask(t, state, assignments) {
   };
 }
 
-export function buildJoyMatrixTools({ getState, getDerived, update }) {
+export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setTheme, loadDemo, clearProject }) {
   return [
     {
       name: "summarize_project",
@@ -679,6 +682,86 @@ export function buildJoyMatrixTools({ getState, getDerived, update }) {
           return s;
         });
         return ok({ removed });
+      },
+    },
+
+    {
+      name: "switch_tab",
+      description: "Switch the visible tab. Useful after running other tools so the user sees the result.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", enum: ["matrix", "team", "tasks", "insights"] },
+        },
+        required: ["name"],
+      },
+      execute: async (args) => {
+        const name = String(args.name || "").toLowerCase();
+        if (!VALID_TABS.has(name)) return err(`Unknown tab "${args.name}". Valid: matrix, team, tasks, insights.`);
+        setTab(name);
+        return ok({ tab: name });
+      },
+    },
+
+    {
+      name: "set_theme",
+      description:
+        "Switch the visual theme. Pass theme_id to change the colour preset (e.g. \"talk2view\" or \"workbook\") and/or mode (\"light\" or \"dark\"). Either field can be supplied alone.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          theme_id: { type: "string", description: "Preset id; one of the keys in PRESETS." },
+          mode: { type: "string", enum: ["light", "dark"] },
+        },
+      },
+      execute: async (args) => {
+        if (args.theme_id !== undefined && !PRESETS[args.theme_id]) {
+          return err(`Unknown theme "${args.theme_id}".`, { candidates: Object.keys(PRESETS) });
+        }
+        if (args.mode !== undefined && !VALID_MODES.has(args.mode)) {
+          return err(`Unknown mode "${args.mode}". Valid: light, dark.`);
+        }
+        setTheme((t) => ({
+          ...t,
+          themeId: args.theme_id ?? t.themeId,
+          mode: args.mode ?? t.mode,
+        }));
+        return ok({ theme_id: args.theme_id, mode: args.mode });
+      },
+    },
+
+    {
+      name: "load_demo",
+      description: "Replace the current project with the built-in demo data (three members, six tasks, sample categories and stakeholders). Destructive — requires user approval.",
+      permission: true,
+      parameters: { type: "object", properties: {} },
+      execute: async () => {
+        loadDemo();
+        return ok({ loaded: "demo" });
+      },
+    },
+
+    {
+      name: "clear_project",
+      description: "Wipe the project to an empty state — no members, no tasks, no categories, no stakeholders. Destructive — requires user approval.",
+      permission: true,
+      parameters: { type: "object", properties: {} },
+      execute: async () => {
+        clearProject();
+        return ok({ cleared: true });
+      },
+    },
+
+    {
+      name: "export_project",
+      description: "Export the current project as a JSON string. Hand the string back to the user so they can copy it, or share it as part of the conversation.",
+      permission: false,
+      parameters: { type: "object", properties: {} },
+      execute: async () => {
+        const envelope = buildExportEnvelope(getState());
+        return ok({ json: JSON.stringify(envelope, null, 2) });
       },
     },
   ];

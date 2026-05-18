@@ -27,7 +27,16 @@ function parseSkill(raw) {
 
 const SKILLS = [parseSkill(joyMatrixSkill)];
 
-export default function JoyMatrixChat({ state, summary, assignments, update }) {
+export default function JoyMatrixChat({
+  state,
+  summary,
+  assignments,
+  update,
+  setTab,
+  setTheme,
+  loadDemo,
+  clearProject,
+}) {
   const [showCallout, setShowCallout] = useState(true);
   const dismiss = () => setShowCallout(false);
 
@@ -39,6 +48,14 @@ export default function JoyMatrixChat({ state, summary, assignments, update }) {
   derivedRef.current = { summary, assignments };
   const updateRef = useRef(update);
   updateRef.current = update;
+  const setTabRef = useRef(setTab);
+  setTabRef.current = setTab;
+  const setThemeRef = useRef(setTheme);
+  setThemeRef.current = setTheme;
+  const loadDemoRef = useRef(loadDemo);
+  loadDemoRef.current = loadDemo;
+  const clearProjectRef = useRef(clearProject);
+  clearProjectRef.current = clearProject;
 
   const tools = useMemo(
     () =>
@@ -46,6 +63,10 @@ export default function JoyMatrixChat({ state, summary, assignments, update }) {
         getState: () => stateRef.current,
         getDerived: () => derivedRef.current,
         update: (fn) => updateRef.current(fn),
+        setTab: (name) => setTabRef.current(name),
+        setTheme: (next) => setThemeRef.current(next),
+        loadDemo: () => loadDemoRef.current(),
+        clearProject: () => clearProjectRef.current(),
       }),
     []
   );
