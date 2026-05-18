@@ -8,7 +8,7 @@ language, graphics, all of it — and gave it to the world without asking
 for anything in return. He wrote that all his work should be considered
 public domain. We follow him.
 
-Joy-Matrix is released under the same terms, in his honor.
+The Joy Matrix is released under the same terms, in his honor.
 
 > "An idiot admires complexity, a genius admires simplicity."
 > — Terry A. Davis

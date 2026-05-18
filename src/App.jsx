@@ -287,10 +287,10 @@ function parseImport(raw) {
   try { data = JSON.parse(raw); }
   catch (e) { return { error: "File isn't valid JSON." }; }
   if (!data || typeof data !== "object") return { error: "File doesn't contain a project." };
-  if (data.app !== "joy-matrix") return { error: "Not a Joy-Matrix export." };
+  if (data.app !== "joy-matrix") return { error: "Not an export from The Joy Matrix." };
   const incomingVersion = Number(data.schemaVersion ?? 1);
   if (incomingVersion > SCHEMA_VERSION) {
-    return { error: `Export was created by a newer Joy-Matrix (schema v${incomingVersion}). Update your app and try again.` };
+    return { error: `Export was created by a newer version of The Joy Matrix (schema v${incomingVersion}). Update your app and try again.` };
   }
   if (!data.project || typeof data.project !== "object") return { error: "Export is missing the project payload." };
   const project = migrateState(data.project);
@@ -769,7 +769,7 @@ function AppInner() {
       <header style={{ padding: "32px 20px 16px", maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.18em", color: colors.inkSoft }}>
-            JOY-MATRIX · v1
+            THE JOY MATRIX · v1
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={toggleMode} title={isDark ? "Switch to light" : "Switch to dark"} style={btnGhost} aria-label="Toggle light/dark">

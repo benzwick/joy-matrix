@@ -1,4 +1,4 @@
-# Joy-Matrix
+# The Joy Matrix
 
 An extension of the Eisenhower matrix that scores each task against every team
 member's **pleasure**, **talent**, and current **capacity** (each on a -3 to +3
@@ -41,7 +41,7 @@ it for a `username.github.io/repo-name/` subpath deploy and set `base` in
 
 ## License
 
-Joy-Matrix is released into the **public domain** via the [Unlicense](./LICENSE).
+The Joy Matrix is released into the **public domain** via the [Unlicense](./LICENSE).
 
 Use it. Fork it. Sell it. Strip the name off and ship it as your own. No
 attribution required, no permission needed, no strings.
