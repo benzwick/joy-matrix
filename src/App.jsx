@@ -463,7 +463,7 @@ function CustomizePanel({ onClose }) {
             ...btnGhost, flex: 1,
             background: theme.preset === key ? colors.ink : "transparent",
             color: theme.preset === key ? colors.paper : colors.inkSoft,
-            borderColor: theme.preset === key ? colors.ink : "var(--joy-rule)",
+            border: `1px solid ${theme.preset === key ? colors.ink : colors.rule}`,
           }}>{p.label}</button>
         ))}
       </div>
@@ -642,6 +642,7 @@ function AppInner() {
   const isDark = (PRESETS[theme.preset]?.mode ?? "light") === "dark";
   const toggleMode = () => setTheme(t => ({ ...t, preset: isDark ? "workbook" : "midnight" }));
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const fileInputRef = React.useRef(null);
 
   // load
   useEffect(() => {
@@ -746,7 +747,6 @@ function AppInner() {
     triggerJsonDownload(`joy-matrix-${date}.json`, envelope);
   };
 
-  const fileInputRef = React.useRef(null);
   const triggerImport = () => fileInputRef.current?.click();
   const onImportFile = async (e) => {
     const file = e.target.files?.[0];
@@ -1064,7 +1064,7 @@ function TeamView({ state, update, addMember, removeMember, summary }) {
                     </div>
                   )}
                   {s.strain && (
-                    <div style={{ ...warnBox, background: "rgba(201,138,44,0.10)", color: colors.ochre, borderColor: "rgba(201,138,44,0.3)" }}>
+                    <div style={{ ...warnBox, background: "rgba(201,138,44,0.10)", color: colors.ochre, border: "1px solid rgba(201,138,44,0.3)" }}>
                       <AlertTriangle size={13}/> Stretched — at limit
                     </div>
                   )}
@@ -1372,7 +1372,7 @@ function InsightsView({ state, summary, assignments }) {
 
       {/* Pain points */}
       {painPoints.length > 0 && (
-        <div style={{ ...card, marginTop: 14, borderColor: "rgba(184,73,42,0.3)" }}>
+        <div style={{ ...card, marginTop: 14, border: "1px solid rgba(184,73,42,0.3)" }}>
           <div style={{ ...mutedLabel, color: colors.rustDeep, marginBottom: 10 }}>PAIN POINTS — RECONSIDER</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {painPoints.map(p => (
@@ -1647,7 +1647,7 @@ const tabBtn = {
   whiteSpace: "nowrap",
 };
 const tabBtnActive = {
-  background: colors.ink, color: colors.paper, borderColor: colors.ink,
+  background: colors.ink, color: colors.paper, border: `1px solid ${colors.ink}`,
 };
 
 const btnGhost = {
