@@ -24,7 +24,7 @@ const DEMO_STATE = {
   schemaVersion: SCHEMA_VERSION,
   goal: {
     from: "scattered MVP, no users",
-    to: "launched product loved by 1,000 users",
+    to: "category-defining product, profitable, Porsche 911 in the driveway",
   },
   categories: [
     { id: "c-eng",  name: "Engineering" },
