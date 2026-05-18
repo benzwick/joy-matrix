@@ -62,7 +62,7 @@ const DEMO_STATE = {
   ],
   tasks: [
     {
-      id: "t1", title: "Ship landing page redesign",
+      id: "t1", title: "Ship landing page redesign", categoryId: "c-des",
       urgency: 4, importance: 4, effort: 2,
       scores: {
         m1: { pleasure: 3, talent: 3 },
@@ -71,7 +71,7 @@ const DEMO_STATE = {
       },
     },
     {
-      id: "t2", title: "Set up Stripe + billing flows",
+      id: "t2", title: "Set up Stripe + billing flows", categoryId: "c-eng",
       urgency: 3, importance: 5, effort: 4,
       scores: {
         m1: { pleasure: -2, talent: 0 },
@@ -80,7 +80,7 @@ const DEMO_STATE = {
       },
     },
     {
-      id: "t3", title: "Write & schedule launch tweet thread",
+      id: "t3", title: "Write & schedule launch tweet thread", categoryId: "c-mkt",
       urgency: 5, importance: 2, effort: 1,
       scores: {
         m1: { pleasure: 1, talent: 2 },
@@ -89,7 +89,7 @@ const DEMO_STATE = {
       },
     },
     {
-      id: "t4", title: "Refactor auth (tech debt)",
+      id: "t4", title: "Refactor auth (tech debt)", categoryId: "c-eng",
       urgency: 1, importance: 4, effort: 4,
       scores: {
         m1: { pleasure: -2, talent: -1 },
@@ -98,7 +98,7 @@ const DEMO_STATE = {
       },
     },
     {
-      id: "t5", title: "Update outdated help docs",
+      id: "t5", title: "Update outdated help docs", categoryId: "c-ops",
       urgency: 1, importance: 1, effort: 2,
       scores: {
         m1: { pleasure: -1, talent: 1 },
@@ -107,7 +107,7 @@ const DEMO_STATE = {
       },
     },
     {
-      id: "t6", title: "Run 5 user research interviews",
+      id: "t6", title: "Run 5 user research interviews", categoryId: "c-des",
       urgency: 2, importance: 5, effort: 3,
       scores: {
         m1: { pleasure: 2, talent: 2 },
@@ -652,8 +652,34 @@ function AppInner() {
     update(s => {
       const id = "t" + Date.now();
       const scores = {};
-      s.members.forEach(m => { scores[m.id] = { pleasure: 0, talent: 0 }; });
-      s.tasks.push({ id, title, urgency: 3, importance: 3, effort: 2, scores });
+      // New tasks start with autoFilled=true so the first category pick
+      // can seed scores from each member's baseline.
+      s.members.forEach(m => { scores[m.id] = { pleasure: 0, talent: 0, autoFilled: true }; });
+      s.tasks.push({ id, title, categoryId: null, urgency: 3, importance: 3, effort: 2, scores });
+      return s;
+    });
+  };
+
+  // When a task's category changes, copy each member's baseline pleasure +
+  // talent for that category into the task's per-member score — but only
+  // for entries the user hasn't hand-edited (autoFilled flag still true).
+  const setTaskCategory = (taskId, categoryId) => {
+    update(s => {
+      const t = s.tasks.find(x => x.id === taskId);
+      if (!t) return s;
+      t.categoryId = categoryId || null;
+      if (!categoryId) return s;
+      s.members.forEach(m => {
+        const sc = t.scores[m.id];
+        if (!sc || !sc.autoFilled) return;
+        const baseline = (m.categoryScores || {})[categoryId];
+        if (!baseline) return;
+        t.scores[m.id] = {
+          pleasure: baseline.pleasure ?? 0,
+          talent: baseline.talent ?? 0,
+          autoFilled: true,
+        };
+      });
       return s;
     });
   };
@@ -767,7 +793,7 @@ function AppInner() {
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 16px 80px" }}>
         {tab === "matrix"   && <MatrixView state={state} assignments={assignments} onEditTask={(t) => { setTab("tasks"); setEditingTask(t.id); }} />}
         {tab === "team"     && <TeamView state={state} update={update} addMember={addMember} removeMember={removeMember} summary={summary} />}
-        {tab === "tasks"    && <TasksView state={state} update={update} addTask={addTask} removeTask={removeTask} editing={editingTask} setEditing={setEditingTask} assignments={assignments} />}
+        {tab === "tasks"    && <TasksView state={state} update={update} addTask={addTask} removeTask={removeTask} editing={editingTask} setEditing={setEditingTask} assignments={assignments} setTaskCategory={setTaskCategory} />}
         {tab === "insights" && <InsightsView state={state} summary={summary} assignments={assignments} />}
       </main>
 
@@ -1056,7 +1082,7 @@ function Stat({ label, value, tone = "ink" }) {
 // Tasks View
 // ─────────────────────────────────────────────────────────────────────────────
 
-function TasksView({ state, update, addTask, removeTask, editing, setEditing, assignments }) {
+function TasksView({ state, update, addTask, removeTask, editing, setEditing, assignments, setTaskCategory }) {
   return (
     <div>
       <SectionHead
@@ -1109,6 +1135,29 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
 
               {isOpen && (
                 <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px dashed ${colors.rule}`, display: "flex", flexDirection: "column", gap: 14 }}>
+                  {(state.categories || []).length > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={mutedLabel}>CATEGORY</span>
+                      <select
+                        value={t.categoryId || ""}
+                        onChange={(e) => setTaskCategory(t.id, e.target.value || null)}
+                        style={{
+                          padding: "5px 10px", borderRadius: 8,
+                          background: colors.paper, color: colors.ink,
+                          border: `1px solid ${colors.rule}`,
+                          fontFamily: "var(--joy-font-body)", fontSize: 13, cursor: "pointer",
+                        }}
+                      >
+                        <option value="">— uncategorized —</option>
+                        {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      {t.categoryId && (
+                        <span style={{ fontFamily: "var(--joy-font-head)", fontStyle: "italic", fontSize: 12, color: colors.inkSoft }}>
+                          changing category re-seeds untouched scores from baselines
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
                     <Slider value={t.urgency} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).urgency = v; return st; })} min={1} max={5} color={colors.rustDeep} label="urgency" />
                     <Slider value={t.importance} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).importance = v; return st; })} min={1} max={5} color={colors.teal} label="importance" />
@@ -1127,8 +1176,8 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                               padding: "8px 10px", background: "rgba(28,25,22,0.025)", borderRadius: 8,
                             }}>
                               <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600, fontSize: 14 }}>{m.name}</div>
-                              <Slider value={sc.pleasure} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, pleasure: v }; return st; })} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
-                              <Slider value={sc.talent} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, talent: v }; return st; })} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
+                              <Slider value={sc.pleasure} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, pleasure: v, autoFilled: false }; return st; })} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
+                              <Slider value={sc.talent} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, talent: v, autoFilled: false }; return st; })} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
                             </div>
                           );
                         })}
