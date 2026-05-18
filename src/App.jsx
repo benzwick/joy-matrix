@@ -345,6 +345,7 @@ const colors = {
 export const PRESETS = {
   talk2view: {
     label: "Talk2View",
+    defaultFonts: { head: "Geist", body: "Geist", mono: "Geist Mono" },
     light: {
       "--joy-paper":      "#f5f4f0",
       "--joy-paper-deep": "#eceae3",
@@ -372,6 +373,7 @@ export const PRESETS = {
   },
   workbook: {
     label: "Workbook",
+    defaultFonts: { head: "Fraunces", body: "Geist", mono: "Geist Mono" },
     light: {
       "--joy-paper":      "#f4ebdb",
       "--joy-paper-deep": "#ece1cb",
@@ -407,13 +409,36 @@ const LEGACY_PRESET_MAP = {
 };
 
 const DEFAULT_FONTS = { head: "Fraunces", body: "Geist", mono: "Geist Mono" };
-const DEFAULT_THEME = { themeId: "talk2view", mode: "light", overrides: {}, fonts: DEFAULT_FONTS };
+const DEFAULT_THEME = { themeId: "talk2view", mode: "light", overrides: {}, fonts: {} };
 
-// Curated set per slot. Picks chosen for legibility + presence on Google Fonts.
+// Resolve the active font for each slot: explicit user pick wins, otherwise
+// the active theme's defaultFonts, otherwise the global DEFAULT_FONTS.
+function effectiveFonts(theme) {
+  const preset = PRESETS[theme.themeId] ?? PRESETS[DEFAULT_THEME.themeId];
+  const themeDefaults = preset?.defaultFonts || DEFAULT_FONTS;
+  const picks = theme.fonts || {};
+  return {
+    head: picks.head || themeDefaults.head || DEFAULT_FONTS.head,
+    body: picks.body || themeDefaults.body || DEFAULT_FONTS.body,
+    mono: picks.mono || themeDefaults.mono || DEFAULT_FONTS.mono,
+  };
+}
+
+// Curated set per slot. Heading + body share one list so the user can pair
+// any serif or sans with any role (Geist heading + Lora body, or vice
+// versa). Mono stays separate since it must be monospaced.
+const PROSE_FONTS = [
+  // Sans-serif
+  "Geist", "Inter", "DM Sans", "Manrope", "Nunito Sans", "Outfit",
+  // Serif
+  "Fraunces", "Playfair Display", "Lora", "DM Serif Display", "Cormorant Garamond", "Roboto Slab",
+];
+const MONO_FONTS = ["Geist Mono", "JetBrains Mono", "IBM Plex Mono", "Space Mono", "Roboto Mono"];
+
 const FONT_OPTIONS = {
-  head: ["Fraunces", "Playfair Display", "Lora", "DM Serif Display", "Cormorant Garamond", "Roboto Slab"],
-  body: ["Geist", "Inter", "DM Sans", "Manrope", "Nunito Sans", "Outfit"],
-  mono: ["Geist Mono", "JetBrains Mono", "IBM Plex Mono", "Space Mono", "Roboto Mono"],
+  head: PROSE_FONTS,
+  body: PROSE_FONTS,
+  mono: MONO_FONTS,
 };
 
 const FONT_FALLBACK = {
@@ -428,10 +453,24 @@ function fontStack(family, slot) {
 
 function buildGoogleFontsUrl({ head, body, mono }) {
   const enc = (f) => f.replace(/ /g, "+");
-  const headParam = `family=${enc(head)}:ital,wght@0,400;0,500;0,600;0,700;0,900;1,400;1,700;1,900`;
-  const bodyParam = `family=${enc(body)}:wght@400;500;600;700`;
-  const monoParam = `family=${enc(mono)}:wght@400;500`;
-  return `https://fonts.googleapis.com/css2?${headParam}&${bodyParam}&${monoParam}&display=swap`;
+  // Per-slot weight + italic axes. Head needs the widest range
+  // (italic + heavy display weights); body needs regular + medium-bold;
+  // mono needs only regular + medium. When the same family is picked for
+  // multiple slots, take the most expensive spec so all uses get satisfied.
+  const HEAD_SPEC = "ital,wght@0,400;0,500;0,600;0,700;0,900;1,400;1,700;1,900";
+  const BODY_SPEC = "wght@400;500;600;700";
+  const MONO_SPEC = "wght@400;500";
+  const SPEC_RANK = { [HEAD_SPEC]: 3, [BODY_SPEC]: 2, [MONO_SPEC]: 1 };
+  const specs = new Map();
+  const add = (family, spec) => {
+    const prev = specs.get(family);
+    if (!prev || SPEC_RANK[spec] > SPEC_RANK[prev]) specs.set(family, spec);
+  };
+  add(head, HEAD_SPEC);
+  add(body, BODY_SPEC);
+  add(mono, MONO_SPEC);
+  const params = [...specs.entries()].map(([f, s]) => `family=${enc(f)}:${s}`).join("&");
+  return `https://fonts.googleapis.com/css2?${params}&display=swap`;
 }
 
 // Pick an initial mode that respects the user's OS preference on first visit.
@@ -483,10 +522,10 @@ function CustomizePanel({ onClose }) {
   const resetAll = () => setTheme(t => ({ ...t, overrides: {} }));
   const switchTheme = (id) => setTheme(t => ({ ...t, themeId: id }));
   const switchMode = (m) => setTheme(t => ({ ...t, mode: m }));
-  const fonts = theme.fonts || DEFAULT_FONTS;
+  const fonts = effectiveFonts(theme);
   const setFont = (slot, family) =>
-    setTheme(t => ({ ...t, fonts: { ...(t.fonts || DEFAULT_FONTS), [slot]: family } }));
-  const resetFonts = () => setTheme(t => ({ ...t, fonts: DEFAULT_FONTS }));
+    setTheme(t => ({ ...t, fonts: { ...(t.fonts || {}), [slot]: family } }));
+  const resetFonts = () => setTheme(t => ({ ...t, fonts: {} }));
   const fontPreview = { head: "Aa Heading", body: "Body sentence.", mono: "mono 0123" };
   const fontSlotLabel = { head: "Heading", body: "Body", mono: "Mono" };
   return (
@@ -523,9 +562,9 @@ function CustomizePanel({ onClose }) {
         {["light", "dark"].map(m => (
           <button key={m} onClick={() => switchMode(m)} style={{
             ...btnGhost, flex: 1, textTransform: "uppercase",
-            background: theme.mode === m ? colors.ink : "transparent",
-            color: theme.mode === m ? colors.paper : colors.inkSoft,
-            border: `1px solid ${theme.mode === m ? colors.ink : colors.rule}`,
+            background: theme.mode === m ? colors.teal : "transparent",
+            color: theme.mode === m ? "#ffffff" : colors.inkSoft,
+            border: `1px solid ${theme.mode === m ? colors.teal : colors.rule}`,
           }}>{m === "dark" ? <><Moon size={11}/> dark</> : <><Sun size={11}/> light</>}</button>
         ))}
       </div>
@@ -618,7 +657,7 @@ function ThemeProvider({ children }) {
   const setTheme = (next) => setThemeState((t) => (typeof next === "function" ? next(t) : next));
   const preset = PRESETS[theme.themeId] ?? PRESETS[DEFAULT_THEME.themeId];
   const presetVars = preset[theme.mode] ?? preset.light;
-  const fonts = theme.fonts || DEFAULT_FONTS;
+  const fonts = effectiveFonts(theme);
   const fontVars = {
     "--joy-font-head": fontStack(fonts.head, "head"),
     "--joy-font-body": fontStack(fonts.body, "body"),
@@ -1752,7 +1791,7 @@ const tabBtn = {
   whiteSpace: "nowrap",
 };
 const tabBtnActive = {
-  background: colors.ink, color: colors.paper, border: `1px solid ${colors.ink}`,
+  background: colors.teal, color: "#ffffff", border: `1px solid ${colors.teal}`,
 };
 
 const btnGhost = {
@@ -1766,7 +1805,7 @@ const btnGhost = {
 const btnPrimary = {
   display: "inline-flex", alignItems: "center", gap: 5,
   padding: "8px 14px", borderRadius: 999,
-  background: colors.ink, color: colors.paper, border: "none",
+  background: colors.teal, color: "#ffffff", border: "none",
   fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.06em",
   cursor: "pointer", textTransform: "uppercase",
 };
