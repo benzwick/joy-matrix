@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useContext, createContext } from "
 import {
   Plus, X, Sparkles, AlertTriangle, Trash2, RefreshCw,
   Zap, Heart, Brain, Battery, ArrowRight, Target, Users, ListTodo, Grid3x3, Activity,
-  Sun, Moon, Palette, RotateCcw, Download, Upload
+  Sun, Moon, Palette, RotateCcw, Download, Upload, Github
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -866,8 +866,24 @@ function AppInner() {
         {tab === "insights" && <InsightsView state={state} summary={summary} assignments={assignments} />}
       </main>
 
-      <footer style={{ textAlign: "center", padding: "24px 16px 40px", fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.08em" }}>
-        ─── designed for sustainable speed ───
+      <footer style={{
+        padding: "24px 16px 40px", fontFamily: "var(--joy-font-mono)", fontSize: 10,
+        color: colors.inkSoft, letterSpacing: "0.08em",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+      }}>
+        <div>─── designed for sustainable speed ───</div>
+        <a
+          href="https://github.com/benzwick/joy-matrix"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: colors.inkSoft, textDecoration: "none",
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <Github size={11} />
+          open source · benzwick/joy-matrix
+        </a>
       </footer>
 
       {customizeOpen && <CustomizePanel onClose={() => setCustomizeOpen(false)} />}
