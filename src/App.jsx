@@ -338,11 +338,40 @@ const colors = {
   bone:      "var(--joy-bone)",
 };
 
+// Each theme carries its own light + dark palette. The header sun/moon
+// toggle flips `mode` within the active themeId. Themes can be added by
+// dropping another entry into this map with both variants defined.
 const PRESETS = {
+  talk2view: {
+    label: "Talk2View",
+    light: {
+      "--joy-paper":      "#f5f4f0",
+      "--joy-paper-deep": "#eceae3",
+      "--joy-ink":        "#1a1a18",
+      "--joy-ink-soft":   "#5a5854",
+      "--joy-rule":       "rgba(26,26,24,0.12)",
+      "--joy-rust":       "#c25543",
+      "--joy-rust-deep":  "#9b3f30",
+      "--joy-teal":       "#3aa89a",
+      "--joy-ochre":      "#c98a2c",
+      "--joy-bone":       "#fbfaf6",
+    },
+    dark: {
+      "--joy-paper":      "#0f1413",
+      "--joy-paper-deep": "#171d1c",
+      "--joy-ink":        "#e8ebe9",
+      "--joy-ink-soft":   "#9aa6a3",
+      "--joy-rule":       "rgba(232,235,233,0.14)",
+      "--joy-rust":       "#e07050",
+      "--joy-rust-deep":  "#f08870",
+      "--joy-teal":       "#5ccab8",
+      "--joy-ochre":      "#e8a647",
+      "--joy-bone":       "#1a2120",
+    },
+  },
   workbook: {
     label: "Workbook",
-    mode: "light",
-    vars: {
+    light: {
       "--joy-paper":      "#f4ebdb",
       "--joy-paper-deep": "#ece1cb",
       "--joy-ink":        "#1c1916",
@@ -354,13 +383,7 @@ const PRESETS = {
       "--joy-ochre":      "#c98a2c",
       "--joy-bone":       "#fbf6ec",
     },
-  },
-  // Dark counterpart: paper darkens to a warm near-black, ink becomes
-  // cream. Accents brighten a notch so they stay readable on dark.
-  midnight: {
-    label: "Midnight",
-    mode: "dark",
-    vars: {
+    dark: {
       "--joy-paper":      "#16110d",
       "--joy-paper-deep": "#1f1812",
       "--joy-ink":        "#ebe2d0",
@@ -375,8 +398,15 @@ const PRESETS = {
   },
 };
 
+// Map from the previous flat-preset names to the new {themeId, mode} shape.
+// Used to migrate localStorage entries written before this refactor.
+const LEGACY_PRESET_MAP = {
+  workbook: { themeId: "workbook", mode: "light" },
+  midnight: { themeId: "workbook", mode: "dark" },
+};
+
 const DEFAULT_FONTS = { head: "Fraunces", body: "Geist", mono: "Geist Mono" };
-const DEFAULT_THEME = { preset: "workbook", overrides: {}, fonts: DEFAULT_FONTS };
+const DEFAULT_THEME = { themeId: "talk2view", mode: "light", overrides: {}, fonts: DEFAULT_FONTS };
 
 // Curated set per slot. Picks chosen for legibility + presence on Google Fonts.
 const FONT_OPTIONS = {
@@ -403,10 +433,25 @@ function buildGoogleFontsUrl({ head, body, mono }) {
   return `https://fonts.googleapis.com/css2?${headParam}&${bodyParam}&${monoParam}&display=swap`;
 }
 
-// Pick an initial preset that respects the user's OS preference on first visit.
-function detectInitialPreset() {
-  if (typeof window === "undefined" || !window.matchMedia) return "workbook";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "midnight" : "workbook";
+// Pick an initial mode that respects the user's OS preference on first visit.
+function detectInitialMode() {
+  if (typeof window === "undefined" || !window.matchMedia) return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+// Forward-only migration: pull a saved theme into the current shape.
+function migrateTheme(saved) {
+  if (!saved || typeof saved !== "object") return null;
+  // Old shape used a flat `preset` name. Map it onto {themeId, mode}.
+  if (saved.preset && !saved.themeId) {
+    const mapped = LEGACY_PRESET_MAP[saved.preset] || { themeId: "talk2view", mode: "light" };
+    return { ...DEFAULT_THEME, ...saved, ...mapped, preset: undefined };
+  }
+  // Defensive: unknown themeId falls back to the default.
+  if (saved.themeId && !PRESETS[saved.themeId]) {
+    return { ...saved, themeId: DEFAULT_THEME.themeId };
+  }
+  return saved;
 }
 
 // The main slots exposed in the color picker. Other CSS variables (rule,
@@ -425,7 +470,8 @@ function useTheme() { return useContext(ThemeContext); }
 
 function CustomizePanel({ onClose }) {
   const { theme, setTheme } = useTheme();
-  const preset = PRESETS[theme.preset] ?? PRESETS.workbook;
+  const preset = PRESETS[theme.themeId] ?? PRESETS[DEFAULT_THEME.themeId];
+  const presetVars = preset[theme.mode] ?? preset.light;
   const setSlot = (key, value) =>
     setTheme(t => ({ ...t, overrides: { ...(t.overrides || {}), [key]: value } }));
   const resetSlot = (key) =>
@@ -434,7 +480,8 @@ function CustomizePanel({ onClose }) {
       return { ...t, overrides: rest };
     });
   const resetAll = () => setTheme(t => ({ ...t, overrides: {} }));
-  const switchPreset = (p) => setTheme(t => ({ ...t, preset: p }));
+  const switchTheme = (id) => setTheme(t => ({ ...t, themeId: id }));
+  const switchMode = (m) => setTheme(t => ({ ...t, mode: m }));
   const fonts = theme.fonts || DEFAULT_FONTS;
   const setFont = (slot, family) =>
     setTheme(t => ({ ...t, fonts: { ...(t.fonts || DEFAULT_FONTS), [slot]: family } }));
@@ -456,22 +503,36 @@ function CustomizePanel({ onClose }) {
         <button onClick={onClose} style={btnIcon} aria-label="Close customize panel"><X size={14}/></button>
       </div>
 
-      <div style={{ ...mutedLabel, marginBottom: 6 }}>PRESET</div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+      <div style={{ ...mutedLabel, marginBottom: 6 }}>THEME</div>
+      <select
+        value={theme.themeId}
+        onChange={(e) => switchTheme(e.target.value)}
+        style={{
+          width: "100%", padding: "6px 10px", borderRadius: 8, marginBottom: 10,
+          background: colors.paper, color: colors.ink,
+          border: `1px solid ${colors.rule}`,
+          fontFamily: "var(--joy-font-body)", fontSize: 13, cursor: "pointer",
+        }}
+      >
         {Object.entries(PRESETS).map(([key, p]) => (
-          <button key={key} onClick={() => switchPreset(key)} style={{
-            ...btnGhost, flex: 1,
-            background: theme.preset === key ? colors.ink : "transparent",
-            color: theme.preset === key ? colors.paper : colors.inkSoft,
-            border: `1px solid ${theme.preset === key ? colors.ink : colors.rule}`,
-          }}>{p.label}</button>
+          <option key={key} value={key}>{p.label}</option>
+        ))}
+      </select>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {["light", "dark"].map(m => (
+          <button key={m} onClick={() => switchMode(m)} style={{
+            ...btnGhost, flex: 1, textTransform: "uppercase",
+            background: theme.mode === m ? colors.ink : "transparent",
+            color: theme.mode === m ? colors.paper : colors.inkSoft,
+            border: `1px solid ${theme.mode === m ? colors.ink : colors.rule}`,
+          }}>{m === "dark" ? <><Moon size={11}/> dark</> : <><Sun size={11}/> light</>}</button>
         ))}
       </div>
 
       <div style={{ ...mutedLabel, marginBottom: 6 }}>COLORS</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {CUSTOMIZE_SLOTS.map(slot => {
-          const current = (theme.overrides && theme.overrides[slot.key]) || preset.vars[slot.key];
+          const current = (theme.overrides && theme.overrides[slot.key]) || presetVars[slot.key];
           const isOverridden = !!(theme.overrides && theme.overrides[slot.key]);
           return (
             <div key={slot.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -548,20 +609,21 @@ function CustomizePanel({ onClose }) {
 
 function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(() => {
-    const saved = loadTheme();
-    if (saved) return { fonts: DEFAULT_FONTS, ...saved };
-    return { ...DEFAULT_THEME, preset: detectInitialPreset() };
+    const saved = migrateTheme(loadTheme());
+    if (saved) return { ...DEFAULT_THEME, ...saved };
+    return { ...DEFAULT_THEME, mode: detectInitialMode() };
   });
   useEffect(() => { saveTheme(theme); }, [theme]);
   const setTheme = (next) => setThemeState((t) => (typeof next === "function" ? next(t) : next));
-  const preset = PRESETS[theme.preset] ?? PRESETS.workbook;
+  const preset = PRESETS[theme.themeId] ?? PRESETS[DEFAULT_THEME.themeId];
+  const presetVars = preset[theme.mode] ?? preset.light;
   const fonts = theme.fonts || DEFAULT_FONTS;
   const fontVars = {
     "--joy-font-head": fontStack(fonts.head, "head"),
     "--joy-font-body": fontStack(fonts.body, "body"),
     "--joy-font-mono": fontStack(fonts.mono, "mono"),
   };
-  const vars = { ...preset.vars, ...fontVars, ...(theme.overrides || {}) };
+  const vars = { ...presetVars, ...fontVars, ...(theme.overrides || {}) };
 
   // (Re)inject the Google Fonts link whenever the font selection changes.
   useEffect(() => {
@@ -639,8 +701,8 @@ function AppInner() {
   const [tab, setTab] = useState("matrix");
   const [editingTask, setEditingTask] = useState(null);
   const { theme, setTheme } = useTheme();
-  const isDark = (PRESETS[theme.preset]?.mode ?? "light") === "dark";
-  const toggleMode = () => setTheme(t => ({ ...t, preset: isDark ? "workbook" : "midnight" }));
+  const isDark = theme.mode === "dark";
+  const toggleMode = () => setTheme(t => ({ ...t, mode: t.mode === "dark" ? "light" : "dark" }));
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const fileInputRef = React.useRef(null);
 
