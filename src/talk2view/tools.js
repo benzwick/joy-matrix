@@ -581,5 +581,105 @@ export function buildJoyMatrixTools({ getState, getDerived, update }) {
         return ok({ task: th.item.title, stakeholderId });
       },
     },
+
+    {
+      name: "add_category",
+      description: "Add a new task category. Categories can be used to tag tasks and to set per-member baseline scores.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: { name: { type: "string" } },
+        required: ["name"],
+      },
+      execute: async (args) => {
+        const name = String(args.name || "").trim();
+        if (!name) return err("Missing category name.");
+        const state = getState();
+        const existing = (state.categories || []).find((c) => c.name.toLowerCase() === name.toLowerCase());
+        if (existing) return err(`Category "${existing.name}" already exists.`);
+        update((s) => {
+          s.categories = s.categories || [];
+          s.categories.push({ id: "c-" + Date.now(), name });
+          return s;
+        });
+        return ok({ added: name });
+      },
+    },
+
+    {
+      name: "remove_category",
+      description: "Remove a task category by name. Any tasks tagged with it become uncategorized. Destructive — requires user approval.",
+      permission: true,
+      parameters: {
+        type: "object",
+        properties: { name: { type: "string" } },
+        required: ["name"],
+      },
+      execute: async (args) => {
+        const state = getState();
+        const hit = findCategory(state, args.name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const id = hit.item.id;
+        const removed = hit.item.name;
+        update((s) => {
+          s.categories = (s.categories || []).filter((c) => c.id !== id);
+          (s.tasks || []).forEach((t) => {
+            if (t.categoryId === id) t.categoryId = null;
+          });
+          return s;
+        });
+        return ok({ removed });
+      },
+    },
+
+    {
+      name: "add_stakeholder",
+      description: "Add a new stakeholder. Stakeholders are the people or groups a task is *for* — founder, early users, the team, a specific customer.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: { name: { type: "string" } },
+        required: ["name"],
+      },
+      execute: async (args) => {
+        const name = String(args.name || "").trim();
+        if (!name) return err("Missing stakeholder name.");
+        const state = getState();
+        const existing = (state.stakeholders || []).find((s) => s.name.toLowerCase() === name.toLowerCase());
+        if (existing) return err(`Stakeholder "${existing.name}" already exists.`);
+        update((s) => {
+          s.stakeholders = s.stakeholders || [];
+          s.stakeholders.push({ id: "s-" + Date.now(), name });
+          return s;
+        });
+        return ok({ added: name });
+      },
+    },
+
+    {
+      name: "remove_stakeholder",
+      description: "Remove a stakeholder by name. Any tasks tagged with it lose the tag. Destructive — requires user approval.",
+      permission: true,
+      parameters: {
+        type: "object",
+        properties: { name: { type: "string" } },
+        required: ["name"],
+      },
+      execute: async (args) => {
+        const state = getState();
+        const hit = findStakeholder(state, args.name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const id = hit.item.id;
+        const removed = hit.item.name;
+        update((s) => {
+          s.stakeholders = (s.stakeholders || []).filter((x) => x.id !== id);
+          (s.tasks || []).forEach((t) => {
+            if (t.stakeholderId === id) t.stakeholderId = null;
+          });
+          return s;
+        });
+        return ok({ removed });
+      },
+    },
   ];
 }
