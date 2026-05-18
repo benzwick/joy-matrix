@@ -4,6 +4,7 @@ import {
   Zap, Heart, Brain, Battery, ArrowRight, Target, Users, ListTodo, Grid3x3, Activity,
   Sun, Moon, Palette, RotateCcw, Download, Upload, Github
 } from "lucide-react";
+import JoyMatrixChat from "./JoyMatrixChat";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types of intent
@@ -692,6 +693,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <AppInner />
+      <JoyMatrixChat />
     </ThemeProvider>
   );
 }
