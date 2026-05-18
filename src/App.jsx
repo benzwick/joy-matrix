@@ -17,7 +17,7 @@ import {
 
 const STORAGE_KEY = "joy-matrix-state-v1";
 const THEME_STORAGE_KEY = "joy-matrix-theme-v1";
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const DEMO_STATE = {
   schemaVersion: SCHEMA_VERSION,
@@ -30,6 +30,11 @@ const DEMO_STATE = {
     { id: "c-des",  name: "Design" },
     { id: "c-mkt",  name: "Marketing" },
     { id: "c-ops",  name: "Ops & admin" },
+  ],
+  stakeholders: [
+    { id: "s-founder", name: "Founder" },
+    { id: "s-users",   name: "Early users" },
+    { id: "s-team",    name: "The team" },
   ],
   members: [
     {
@@ -62,7 +67,7 @@ const DEMO_STATE = {
   ],
   tasks: [
     {
-      id: "t1", title: "Ship landing page redesign", categoryId: "c-des",
+      id: "t1", title: "Ship landing page redesign", categoryId: "c-des", stakeholderId: "s-users",
       urgency: 4, importance: 4, effort: 2,
       scores: {
         m1: { pleasure: 3, talent: 3 },
@@ -71,7 +76,7 @@ const DEMO_STATE = {
       },
     },
     {
-      id: "t2", title: "Set up Stripe + billing flows", categoryId: "c-eng",
+      id: "t2", title: "Set up Stripe + billing flows", categoryId: "c-eng", stakeholderId: "s-founder",
       urgency: 3, importance: 5, effort: 4,
       scores: {
         m1: { pleasure: -2, talent: 0 },
@@ -80,7 +85,7 @@ const DEMO_STATE = {
       },
     },
     {
-      id: "t3", title: "Write & schedule launch tweet thread", categoryId: "c-mkt",
+      id: "t3", title: "Write & schedule launch tweet thread", categoryId: "c-mkt", stakeholderId: "s-users",
       urgency: 5, importance: 2, effort: 1,
       scores: {
         m1: { pleasure: 1, talent: 2 },
@@ -89,7 +94,7 @@ const DEMO_STATE = {
       },
     },
     {
-      id: "t4", title: "Refactor auth (tech debt)", categoryId: "c-eng",
+      id: "t4", title: "Refactor auth (tech debt)", categoryId: "c-eng", stakeholderId: "s-team",
       urgency: 1, importance: 4, effort: 4,
       scores: {
         m1: { pleasure: -2, talent: -1 },
@@ -107,7 +112,7 @@ const DEMO_STATE = {
       },
     },
     {
-      id: "t6", title: "Run 5 user research interviews", categoryId: "c-des",
+      id: "t6", title: "Run 5 user research interviews", categoryId: "c-des", stakeholderId: "s-users",
       urgency: 2, importance: 5, effort: 3,
       scores: {
         m1: { pleasure: 2, talent: 2 },
@@ -122,6 +127,7 @@ const EMPTY_STATE = {
   schemaVersion: SCHEMA_VERSION,
   goal: { from: "", to: "" },
   categories: [],
+  stakeholders: [],
   members: [],
   tasks: [],
 };
@@ -138,6 +144,9 @@ function migrateState(s) {
       ...s, schemaVersion: 3,
       members: (s.members || []).map(m => ({ ...m, categoryScores: m.categoryScores || {} })),
     };
+  }
+  if (s.schemaVersion < 4) {
+    s = { ...s, schemaVersion: 4, stakeholders: s.stakeholders || [] };
   }
   return s;
 }
@@ -655,7 +664,7 @@ function AppInner() {
       // New tasks start with autoFilled=true so the first category pick
       // can seed scores from each member's baseline.
       s.members.forEach(m => { scores[m.id] = { pleasure: 0, talent: 0, autoFilled: true }; });
-      s.tasks.push({ id, title, categoryId: null, urgency: 3, importance: 3, effort: 2, scores });
+      s.tasks.push({ id, title, categoryId: null, stakeholderId: null, urgency: 3, importance: 3, effort: 2, scores });
       return s;
     });
   };
@@ -860,6 +869,7 @@ function MatrixView({ state, assignments, onEditTask }) {
                 {groups[q].map(t => {
                   const a = assignments[t.id];
                   const assignee = a ? state.members.find(m => m.id === a.memberId) : null;
+                  const stakeholder = t.stakeholderId ? (state.stakeholders || []).find(s => s.id === t.stakeholderId) : null;
                   return (
                     <button key={t.id} onClick={() => onEditTask(t)} style={{
                       textAlign: "left", padding: "8px 10px", borderRadius: 8,
@@ -877,6 +887,11 @@ function MatrixView({ state, assignments, onEditTask }) {
                           <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft }}>unassigned</span>
                         ) : (
                           <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft }}>drop or defer</span>
+                        )}
+                        {stakeholder && (
+                          <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, color: colors.teal, letterSpacing: "0.04em" }}>
+                            for {stakeholder.name}
+                          </span>
                         )}
                         {a?.burnoutRisk && (
                           <span title="burnout risk" style={{ display: "inline-flex", alignItems: "center", gap: 2, fontFamily: "var(--joy-font-mono)", fontSize: 9, color: colors.rustDeep }}>
@@ -1093,6 +1108,7 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
       />
 
       <CategoriesBar state={state} update={update} />
+      <StakeholdersBar state={state} update={update} />
 
       {state.tasks.length === 0 && (
         <Empty>No tasks yet.</Empty>
@@ -1135,25 +1151,47 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
 
               {isOpen && (
                 <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px dashed ${colors.rule}`, display: "flex", flexDirection: "column", gap: 14 }}>
-                  {(state.categories || []).length > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span style={mutedLabel}>CATEGORY</span>
-                      <select
-                        value={t.categoryId || ""}
-                        onChange={(e) => setTaskCategory(t.id, e.target.value || null)}
-                        style={{
-                          padding: "5px 10px", borderRadius: 8,
-                          background: colors.paper, color: colors.ink,
-                          border: `1px solid ${colors.rule}`,
-                          fontFamily: "var(--joy-font-body)", fontSize: 13, cursor: "pointer",
-                        }}
-                      >
-                        <option value="">— uncategorized —</option>
-                        {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                  {((state.categories || []).length > 0 || (state.stakeholders || []).length > 0) && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                      {(state.categories || []).length > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={mutedLabel}>CATEGORY</span>
+                          <select
+                            value={t.categoryId || ""}
+                            onChange={(e) => setTaskCategory(t.id, e.target.value || null)}
+                            style={{
+                              padding: "5px 10px", borderRadius: 8,
+                              background: colors.paper, color: colors.ink,
+                              border: `1px solid ${colors.rule}`,
+                              fontFamily: "var(--joy-font-body)", fontSize: 13, cursor: "pointer",
+                            }}
+                          >
+                            <option value="">— uncategorized —</option>
+                            {state.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      {(state.stakeholders || []).length > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={mutedLabel}>FOR</span>
+                          <select
+                            value={t.stakeholderId || ""}
+                            onChange={(e) => update(st => { st.tasks.find(x => x.id === t.id).stakeholderId = e.target.value || null; return st; })}
+                            style={{
+                              padding: "5px 10px", borderRadius: 8,
+                              background: colors.paper, color: colors.ink,
+                              border: `1px solid ${colors.rule}`,
+                              fontFamily: "var(--joy-font-body)", fontSize: 13, cursor: "pointer",
+                            }}
+                          >
+                            <option value="">— nobody specific —</option>
+                            {state.stakeholders.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                          </select>
+                        </div>
+                      )}
                       {t.categoryId && (
                         <span style={{ fontFamily: "var(--joy-font-head)", fontStyle: "italic", fontSize: 12, color: colors.inkSoft }}>
-                          changing category re-seeds untouched scores from baselines
+                          changing category re-seeds untouched scores
                         </span>
                       )}
                     </div>
@@ -1444,6 +1482,69 @@ function CategoriesBar({ state, update }) {
       <button onClick={addCategory} style={{
         ...btnGhost, padding: "4px 10px",
       }}><Plus size={11}/> add category</button>
+    </div>
+  );
+}
+
+function StakeholdersBar({ state, update }) {
+  const stakeholders = state.stakeholders || [];
+  const add = () => {
+    const name = prompt("Stakeholder name? (founder, customer, investor, etc.)");
+    if (!name || !name.trim()) return;
+    update(s => {
+      s.stakeholders = s.stakeholders || [];
+      s.stakeholders.push({ id: "s-" + Date.now(), name: name.trim() });
+      return s;
+    });
+  };
+  const rename = (id, current) => {
+    const name = prompt("Rename stakeholder:", current);
+    if (!name || !name.trim()) return;
+    update(s => {
+      const x = (s.stakeholders || []).find(y => y.id === id);
+      if (x) x.name = name.trim();
+      return s;
+    });
+  };
+  const remove = (id) => {
+    if (!confirm("Delete this stakeholder? Tasks tagged with it will become unassigned.")) return;
+    update(s => {
+      s.stakeholders = (s.stakeholders || []).filter(x => x.id !== id);
+      (s.tasks || []).forEach(t => { if (t.stakeholderId === id) t.stakeholderId = null; });
+      return s;
+    });
+  };
+  return (
+    <div style={{
+      marginTop: 6, marginBottom: 4, display: "flex", alignItems: "center",
+      gap: 8, flexWrap: "wrap",
+    }}>
+      <span style={{ ...mutedLabel, marginRight: 2 }}>STAKEHOLDERS</span>
+      {stakeholders.length === 0 && (
+        <span style={{ fontFamily: "var(--joy-font-head)", fontStyle: "italic", fontSize: 13, color: colors.inkSoft }}>
+          none yet — add one to tag tasks with who they're for
+        </span>
+      )}
+      {stakeholders.map(x => (
+        <span key={x.id} style={{
+          display: "inline-flex", alignItems: "center", gap: 4,
+          padding: "4px 4px 4px 10px", borderRadius: 999,
+          background: "rgba(42,93,93,0.07)", border: `1px solid rgba(42,93,93,0.25)`,
+          fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.04em",
+          color: colors.teal,
+        }}>
+          <button onClick={() => rename(x.id, x.name)} title="Rename" style={{
+            background: "transparent", border: "none", color: "inherit",
+            font: "inherit", letterSpacing: "inherit", cursor: "pointer", padding: 0,
+          }}>{x.name}</button>
+          <button onClick={() => remove(x.id)} title="Delete" style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: 18, height: 18, borderRadius: 999, border: "none",
+            background: "transparent", color: colors.inkSoft, cursor: "pointer",
+          }}><X size={10}/></button>
+        </span>
+      ))}
+      <button onClick={add} style={{ ...btnGhost, padding: "4px 10px" }}><Plus size={11}/> add stakeholder</button>
     </div>
   );
 }
