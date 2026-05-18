@@ -953,13 +953,15 @@ function AppInner() {
           rel="noopener noreferrer"
           style={{
             color: colors.inkSoft, textDecoration: "none",
-            display: "inline-flex", alignItems: "center", gap: 8,
-            marginTop: 4,
+            display: "flex", flexDirection: "column", alignItems: "center",
+            gap: 4, marginTop: 14,
           }}
         >
-          <span>Powered by</span>
-          <img src="talk2view-logo.png" alt="Talk2View" style={{ height: 16, width: "auto" }} />
-          <span>— Software you can talk to…</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <span>Powered by</span>
+            <img src="talk2view-logo.png" alt="Talk2View" style={{ height: 22, width: "auto", display: "block" }} />
+          </span>
+          <span>"software you can talk to…"</span>
         </a>
       </footer>
 
