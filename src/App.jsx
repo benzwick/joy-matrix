@@ -156,7 +156,7 @@ function migrateState(s) {
 // Algorithm
 // ─────────────────────────────────────────────────────────────────────────────
 
-const quadrantOf = (t) => {
+export const quadrantOf = (t) => {
   const u = t.urgency >= 3, i = t.importance >= 3;
   if (u && i) return "DO";
   if (!u && i) return "SCHEDULE";
@@ -693,7 +693,6 @@ export default function App() {
   return (
     <ThemeProvider>
       <AppInner />
-      <JoyMatrixChat />
     </ThemeProvider>
   );
 }
@@ -965,6 +964,7 @@ function AppInner() {
       </footer>
 
       {customizeOpen && <CustomizePanel onClose={() => setCustomizeOpen(false)} />}
+      <JoyMatrixChat state={state} summary={summary} assignments={assignments} />
     </div>
   );
 }

@@ -1,18 +1,18 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Talk2View, ChatWidget, useTalk2View } from "@talk2view/sdk/ui";
 import systemPrompt from "./system-prompt.md?raw";
 import joyMatrixSkill from "./skills/joy-matrix.md?raw";
+import { buildJoyMatrixTools } from "./tools";
 
 const PARTNER_KEY = "pk_live_50f4feb3bda0eb5b3a1c4b5faea0a567e8cd984608d989d0";
 
 const SUGGESTIONS = [
-  "How does the algorithm decide who gets what?",
   "Which person is at burnout risk?",
+  "Show me everyone's load.",
   "What do the four quadrants mean?",
 ];
 
-// Parse a YAML-ish frontmatter block + body out of a markdown file.
-// Returns { name, description, content }.
+// Parse YAML-ish frontmatter + body out of a markdown file.
 function parseSkill(raw) {
   const m = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
   if (!m) return { name: "", description: "", content: raw };
@@ -27,11 +27,28 @@ function parseSkill(raw) {
 
 const SKILLS = [parseSkill(joyMatrixSkill)];
 
-export default function JoyMatrixChat() {
+export default function JoyMatrixChat({ state, summary, assignments }) {
   const [showCallout, setShowCallout] = useState(true);
   const dismiss = () => setShowCallout(false);
+
+  // Stable refs let the tool array stay stable while state changes — each
+  // tool call reads the latest values via getState() / getDerived().
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const derivedRef = useRef({ summary, assignments });
+  derivedRef.current = { summary, assignments };
+
+  const tools = useMemo(
+    () =>
+      buildJoyMatrixTools({
+        getState: () => stateRef.current,
+        getDerived: () => derivedRef.current,
+      }),
+    []
+  );
+
   return (
-    <Talk2View partnerKey={PARTNER_KEY} systemPrompt={systemPrompt}>
+    <Talk2View partnerKey={PARTNER_KEY} systemPrompt={systemPrompt} tools={tools}>
       <SkillBootstrap />
       <div onClick={dismiss}>
         <ChatWidget welcome={{ heading: "Ask The Joy Matrix", suggestions: SUGGESTIONS }} />
@@ -42,7 +59,6 @@ export default function JoyMatrixChat() {
 }
 
 // Registers our domain skills with the SDK once per session.
-// Lives inside <Talk2View> so it has access to the t2v instance.
 function SkillBootstrap() {
   const { t2v } = useTalk2View();
   const registered = useRef(false);
@@ -51,8 +67,6 @@ function SkillBootstrap() {
     registered.current = true;
     for (const s of SKILLS) t2v.skills.add(s);
     t2v.skills.register(SKILLS).catch((err) => {
-      // Non-fatal: the chat still works without skills, just with less
-      // context. Log so we notice in dev.
       console.warn("[joy-matrix] skill registration failed:", err);
     });
   }, [t2v]);
