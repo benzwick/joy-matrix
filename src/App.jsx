@@ -292,7 +292,33 @@ const PRESETS = {
   },
 };
 
-const DEFAULT_THEME = { preset: "workbook", overrides: {} };
+const DEFAULT_FONTS = { head: "Fraunces", body: "Geist", mono: "Geist Mono" };
+const DEFAULT_THEME = { preset: "workbook", overrides: {}, fonts: DEFAULT_FONTS };
+
+// Curated set per slot. Picks chosen for legibility + presence on Google Fonts.
+const FONT_OPTIONS = {
+  head: ["Fraunces", "Playfair Display", "Lora", "DM Serif Display", "Cormorant Garamond", "Roboto Slab"],
+  body: ["Geist", "Inter", "DM Sans", "Manrope", "Nunito Sans", "Outfit"],
+  mono: ["Geist Mono", "JetBrains Mono", "IBM Plex Mono", "Space Mono", "Roboto Mono"],
+};
+
+const FONT_FALLBACK = {
+  head: 'serif',
+  body: 'ui-sans-serif, system-ui, sans-serif',
+  mono: 'ui-monospace, monospace',
+};
+
+function fontStack(family, slot) {
+  return `"${family}", ${FONT_FALLBACK[slot]}`;
+}
+
+function buildGoogleFontsUrl({ head, body, mono }) {
+  const enc = (f) => f.replace(/ /g, "+");
+  const headParam = `family=${enc(head)}:ital,wght@0,400;0,500;0,600;0,700;0,900;1,400;1,700;1,900`;
+  const bodyParam = `family=${enc(body)}:wght@400;500;600;700`;
+  const monoParam = `family=${enc(mono)}:wght@400;500`;
+  return `https://fonts.googleapis.com/css2?${headParam}&${bodyParam}&${monoParam}&display=swap`;
+}
 
 // Pick an initial preset that respects the user's OS preference on first visit.
 function detectInitialPreset() {
@@ -326,16 +352,22 @@ function CustomizePanel({ onClose }) {
     });
   const resetAll = () => setTheme(t => ({ ...t, overrides: {} }));
   const switchPreset = (p) => setTheme(t => ({ ...t, preset: p }));
+  const fonts = theme.fonts || DEFAULT_FONTS;
+  const setFont = (slot, family) =>
+    setTheme(t => ({ ...t, fonts: { ...(t.fonts || DEFAULT_FONTS), [slot]: family } }));
+  const resetFonts = () => setTheme(t => ({ ...t, fonts: DEFAULT_FONTS }));
+  const fontPreview = { head: "Aa Heading", body: "Body sentence.", mono: "mono 0123" };
+  const fontSlotLabel = { head: "Heading", body: "Body", mono: "Mono" };
   return (
     <div style={{
       position: "fixed", top: 16, right: 16, zIndex: 50, width: 280,
       background: colors.bone, border: `1px solid ${colors.rule}`, borderRadius: 14,
       boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
       padding: 14,
-      fontFamily: "Geist, sans-serif", color: colors.ink,
+      fontFamily: "var(--joy-font-body)", color: colors.ink,
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
-        <div style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 18, fontStyle: "italic", letterSpacing: "-0.01em" }}>
+        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18, fontStyle: "italic", letterSpacing: "-0.01em" }}>
           Customize
         </div>
         <button onClick={onClose} style={btnIcon} aria-label="Close customize panel"><X size={14}/></button>
@@ -373,8 +405,8 @@ function CustomizePanel({ onClose }) {
                 />
               </label>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: "Fraunces, serif", fontWeight: 600, fontSize: 14, lineHeight: 1.1 }}>{slot.label}</div>
-                <div style={{ fontFamily: "Geist Mono, monospace", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.06em" }}>{slot.sub} · {current}</div>
+                <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600, fontSize: 14, lineHeight: 1.1 }}>{slot.label}</div>
+                <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.06em" }}>{slot.sub} · {current}</div>
               </div>
               {isOverridden && (
                 <button onClick={() => resetSlot(slot.key)} style={btnIcon} title="Reset to preset">
@@ -387,18 +419,79 @@ function CustomizePanel({ onClose }) {
       </div>
 
       <button onClick={resetAll} style={{ ...btnGhost, marginTop: 14, width: "100%", justifyContent: "center" }}>
-        <RotateCcw size={11}/> Reset all to preset
+        <RotateCcw size={11}/> Reset colors to preset
+      </button>
+
+      <div style={{ ...mutedLabel, marginTop: 16, marginBottom: 6 }}>FONTS</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {["head", "body", "mono"].map(slot => (
+          <div key={slot} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, letterSpacing: "0.08em", color: colors.inkSoft, textTransform: "uppercase" }}>
+                {fontSlotLabel[slot]}
+              </span>
+              <select
+                value={fonts[slot]}
+                onChange={(e) => setFont(slot, e.target.value)}
+                style={{
+                  flex: 1, padding: "4px 8px", borderRadius: 8,
+                  background: colors.paper, color: colors.ink,
+                  border: `1px solid ${colors.rule}`, fontFamily: "var(--joy-font-body)",
+                  fontSize: 12, cursor: "pointer",
+                }}
+              >
+                {FONT_OPTIONS[slot].map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div style={{
+              fontFamily: fontStack(fonts[slot], slot),
+              fontSize: slot === "head" ? 22 : slot === "mono" ? 13 : 15,
+              fontWeight: slot === "head" ? 700 : 400,
+              fontStyle: slot === "head" ? "italic" : "normal",
+              color: colors.ink, lineHeight: 1.2,
+              padding: "4px 0 2px",
+            }}>
+              {fontPreview[slot]}
+            </div>
+          </div>
+        ))}
+      </div>
+      <button onClick={resetFonts} style={{ ...btnGhost, marginTop: 12, width: "100%", justifyContent: "center" }}>
+        <RotateCcw size={11}/> Reset fonts to default
       </button>
     </div>
   );
 }
 
 function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(() => loadTheme() || { ...DEFAULT_THEME, preset: detectInitialPreset() });
+  const [theme, setThemeState] = useState(() => {
+    const saved = loadTheme();
+    if (saved) return { fonts: DEFAULT_FONTS, ...saved };
+    return { ...DEFAULT_THEME, preset: detectInitialPreset() };
+  });
   useEffect(() => { saveTheme(theme); }, [theme]);
   const setTheme = (next) => setThemeState((t) => (typeof next === "function" ? next(t) : next));
   const preset = PRESETS[theme.preset] ?? PRESETS.workbook;
-  const vars = { ...preset.vars, ...(theme.overrides || {}) };
+  const fonts = theme.fonts || DEFAULT_FONTS;
+  const fontVars = {
+    "--joy-font-head": fontStack(fonts.head, "head"),
+    "--joy-font-body": fontStack(fonts.body, "body"),
+    "--joy-font-mono": fontStack(fonts.mono, "mono"),
+  };
+  const vars = { ...preset.vars, ...fontVars, ...(theme.overrides || {}) };
+
+  // (Re)inject the Google Fonts link whenever the font selection changes.
+  useEffect(() => {
+    const id = "joy-matrix-fonts";
+    const url = buildGoogleFontsUrl(fonts);
+    let link = document.getElementById(id);
+    if (link && link.href === url) return;
+    if (link) link.remove();
+    link = document.createElement("link");
+    link.id = id; link.rel = "stylesheet"; link.href = url;
+    document.head.appendChild(link);
+  }, [fonts.head, fonts.body, fonts.mono]);
+
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>
       <div style={{ ...vars, minHeight: "100vh" }}>{children}</div>
@@ -416,7 +509,7 @@ function Pill({ children, tone = "ink" }) {
   const t = tones[tone];
   return (
     <span style={{
-      fontFamily: "Geist Mono, ui-monospace, monospace",
+      fontFamily: "var(--joy-font-mono)",
       fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase",
       padding: "3px 8px", borderRadius: 999,
       background: t.bg, color: t.color, border: `1px solid ${t.bd}`,
@@ -429,7 +522,7 @@ function Slider({ value, onChange, min, max, step = 1, color = colors.ink, label
   const pct = ((value - min) / (max - min)) * 100;
   return (
     <div style={{ width: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "Geist Mono, monospace", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.06em", marginBottom: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.06em", marginBottom: 4 }}>
         <span>{label}</span>
         <span style={{ color: color, fontWeight: 600 }}>{value > 0 ? `+${value}` : value}</span>
       </div>
@@ -467,16 +560,6 @@ function AppInner() {
   const toggleMode = () => setTheme(t => ({ ...t, preset: isDark ? "workbook" : "midnight" }));
   const [customizeOpen, setCustomizeOpen] = useState(false);
 
-  // inject fonts
-  useEffect(() => {
-    const id = "joy-matrix-fonts";
-    if (document.getElementById(id)) return;
-    const link = document.createElement("link");
-    link.id = id; link.rel = "stylesheet";
-    link.href = "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap";
-    document.head.appendChild(link);
-  }, []);
-
   // load
   useEffect(() => {
     const saved = loadState();
@@ -495,7 +578,7 @@ function AppInner() {
 
   if (!state) {
     return (
-      <div style={{ minHeight: "100vh", background: colors.paper, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Fraunces, serif", color: colors.ink }}>
+      <div style={{ minHeight: "100vh", background: colors.paper, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--joy-font-head)", color: colors.ink }}>
         loading…
       </div>
     );
@@ -551,13 +634,13 @@ function AppInner() {
   return (
     <div style={{
       minHeight: "100vh", background: colors.paper, color: colors.ink,
-      fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif",
+      fontFamily: "var(--joy-font-body)",
       backgroundImage: "radial-gradient(circle at 20% 0%, rgba(184,73,42,0.06), transparent 50%), radial-gradient(circle at 80% 100%, rgba(42,93,93,0.05), transparent 50%)",
     }}>
       {/* header */}
       <header style={{ padding: "32px 20px 16px", maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-          <div style={{ fontFamily: "Geist Mono, monospace", fontSize: 11, letterSpacing: "0.18em", color: colors.inkSoft }}>
+          <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.18em", color: colors.inkSoft }}>
             JOY-MATRIX · v1
           </div>
           <div style={{ display: "flex", gap: 6 }}>
@@ -577,7 +660,7 @@ function AppInner() {
         </div>
 
         <h1 style={{
-          fontFamily: "Fraunces, serif", fontWeight: 900, fontStyle: "italic",
+          fontFamily: "var(--joy-font-head)", fontWeight: 900, fontStyle: "italic",
           fontSize: "clamp(36px, 7vw, 64px)", lineHeight: 0.95, letterSpacing: "-0.02em",
           margin: "12px 0 4px",
           fontVariationSettings: '"opsz" 144',
@@ -648,7 +731,7 @@ function AppInner() {
         {tab === "insights" && <InsightsView state={state} summary={summary} assignments={assignments} />}
       </main>
 
-      <footer style={{ textAlign: "center", padding: "24px 16px 40px", fontFamily: "Geist Mono, monospace", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.08em" }}>
+      <footer style={{ textAlign: "center", padding: "24px 16px 40px", fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.08em" }}>
         ─── designed for sustainable speed ───
       </footer>
 
@@ -695,16 +778,16 @@ function MatrixView({ state, assignments, onEditTask }) {
               display: "flex", flexDirection: "column", gap: 8, minHeight: 220,
             }}>
               <div>
-                <div style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 22, color: cm.color, letterSpacing: "-0.02em" }}>
+                <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 22, color: cm.color, letterSpacing: "-0.02em" }}>
                   {meta.label}
                 </div>
-                <div style={{ fontFamily: "Geist Mono, monospace", fontSize: 9, letterSpacing: "0.1em", color: colors.inkSoft, textTransform: "uppercase" }}>
+                <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, letterSpacing: "0.1em", color: colors.inkSoft, textTransform: "uppercase" }}>
                   {meta.sub}
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
                 {groups[q].length === 0 && (
-                  <div style={{ fontFamily: "Fraunces, serif", fontStyle: "italic", color: colors.inkSoft, fontSize: 13 }}>
+                  <div style={{ fontFamily: "var(--joy-font-head)", fontStyle: "italic", color: colors.inkSoft, fontSize: 13 }}>
                     nothing here yet
                   </div>
                 )}
@@ -721,20 +804,20 @@ function MatrixView({ state, assignments, onEditTask }) {
                       <div style={{ fontWeight: 500, fontSize: 13.5, lineHeight: 1.25 }}>{t.title}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         {assignee ? (
-                          <span style={{ fontFamily: "Geist Mono, monospace", fontSize: 10, color: cm.color, fontWeight: 600 }}>
+                          <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: cm.color, fontWeight: 600 }}>
                             → {assignee.name}
                           </span>
                         ) : q !== "ELIMINATE" ? (
-                          <span style={{ fontFamily: "Geist Mono, monospace", fontSize: 10, color: colors.inkSoft }}>unassigned</span>
+                          <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft }}>unassigned</span>
                         ) : (
-                          <span style={{ fontFamily: "Geist Mono, monospace", fontSize: 10, color: colors.inkSoft }}>drop or defer</span>
+                          <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft }}>drop or defer</span>
                         )}
                         {a?.burnoutRisk && (
-                          <span title="burnout risk" style={{ display: "inline-flex", alignItems: "center", gap: 2, fontFamily: "Geist Mono, monospace", fontSize: 9, color: colors.rustDeep }}>
+                          <span title="burnout risk" style={{ display: "inline-flex", alignItems: "center", gap: 2, fontFamily: "var(--joy-font-mono)", fontSize: 9, color: colors.rustDeep }}>
                             <AlertTriangle size={10} /> risk
                           </span>
                         )}
-                        <span style={{ fontFamily: "Geist Mono, monospace", fontSize: 9, color: colors.inkSoft, marginLeft: "auto" }}>
+                        <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, color: colors.inkSoft, marginLeft: "auto" }}>
                           U{t.urgency} I{t.importance} E{t.effort}
                         </span>
                       </div>
@@ -807,7 +890,7 @@ function TeamView({ state, update, addMember, removeMember, summary }) {
                 <input
                   value={m.name}
                   onChange={(e) => update(st => { st.members.find(x => x.id === m.id).name = e.target.value; return st; })}
-                  style={{ ...inputBare, fontFamily: "Fraunces, serif", fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em", padding: 0 }}
+                  style={{ ...inputBare, fontFamily: "var(--joy-font-head)", fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em", padding: 0 }}
                 />
                 <button onClick={() => removeMember(m.id)} style={btnIcon} title="remove"><X size={14}/></button>
               </div>
@@ -866,7 +949,7 @@ function Stat({ label, value, tone = "ink" }) {
   return (
     <div>
       <div style={mutedLabel}>{label}</div>
-      <div style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 20, color: colorMap[tone], lineHeight: 1.1, marginTop: 2 }}>{value}</div>
+      <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 20, color: colorMap[tone], lineHeight: 1.1, marginTop: 2 }}>{value}</div>
     </div>
   );
 }
@@ -902,7 +985,7 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                   <input
                     value={t.title}
                     onChange={(e) => update(st => { st.tasks.find(x => x.id === t.id).title = e.target.value; return st; })}
-                    style={{ ...inputBare, fontFamily: "Fraunces, serif", fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em", padding: 0 }}
+                    style={{ ...inputBare, fontFamily: "var(--joy-font-head)", fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em", padding: 0 }}
                   />
                   <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                     <Pill tone={q === "DO" ? "rust" : q === "SCHEDULE" ? "teal" : "ink"}>{q}</Pill>
@@ -919,7 +1002,7 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
               </div>
 
               {a?.reasoning && !isOpen && (
-                <div style={{ marginTop: 8, fontSize: 12, color: colors.inkSoft, fontStyle: "italic", fontFamily: "Fraunces, serif" }}>
+                <div style={{ marginTop: 8, fontSize: 12, color: colors.inkSoft, fontStyle: "italic", fontFamily: "var(--joy-font-head)" }}>
                   "{a.reasoning}"
                 </div>
               )}
@@ -943,7 +1026,7 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                               display: "grid", gridTemplateColumns: "minmax(80px, 100px) 1fr 1fr", gap: 12, alignItems: "center",
                               padding: "8px 10px", background: "rgba(28,25,22,0.025)", borderRadius: 8,
                             }}>
-                              <div style={{ fontFamily: "Fraunces, serif", fontWeight: 600, fontSize: 14 }}>{m.name}</div>
+                              <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600, fontSize: 14 }}>{m.name}</div>
                               <Slider value={sc.pleasure} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, pleasure: v }; return st; })} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
                               <Slider value={sc.talent} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, talent: v }; return st; })} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
                             </div>
@@ -1014,8 +1097,8 @@ function InsightsView({ state, summary, assignments }) {
               return (
                 <div key={s.memberId}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 13 }}>
-                    <span style={{ fontFamily: "Fraunces, serif", fontWeight: 600 }}>{s.name}</span>
-                    <span style={{ fontFamily: "Geist Mono, monospace", fontSize: 11, color: colors.inkSoft }}>
+                    <span style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600 }}>{s.name}</span>
+                    <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, color: colors.inkSoft }}>
                       load {s.totalEffort}/{s.budget.toFixed(1)} · joy {s.joyIndex > 0 ? "+" : ""}{s.joyIndex}
                     </span>
                   </div>
@@ -1047,9 +1130,9 @@ function InsightsView({ state, summary, assignments }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {painPoints.map(p => (
               <div key={p.task.id} style={{ fontSize: 13.5, lineHeight: 1.5 }}>
-                <span style={{ fontFamily: "Fraunces, serif", fontWeight: 600 }}>{p.task.title}</span>{" "}
+                <span style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600 }}>{p.task.title}</span>{" "}
                 <span style={{ color: colors.inkSoft }}>→ {p.member?.name}</span>
-                <div style={{ fontSize: 12, color: colors.inkSoft, fontStyle: "italic", fontFamily: "Fraunces, serif" }}>
+                <div style={{ fontSize: 12, color: colors.inkSoft, fontStyle: "italic", fontFamily: "var(--joy-font-head)" }}>
                   {p.scores.pleasure <= -2 && p.scores.talent <= -2
                     ? "they neither enjoy this nor are good at it. swap, train, or drop."
                     : p.scores.pleasure <= -2
@@ -1068,14 +1151,14 @@ function InsightsView({ state, summary, assignments }) {
             {unassigned > 0 && (
               <div>
                 <div style={mutedLabel}>UNASSIGNED</div>
-                <div style={{ fontFamily: "Fraunces, serif", fontSize: 22, fontWeight: 700 }}>{unassigned}</div>
+                <div style={{ fontFamily: "var(--joy-font-head)", fontSize: 22, fontWeight: 700 }}>{unassigned}</div>
                 <div style={{ fontSize: 11, color: colors.inkSoft }}>add team members or capacity</div>
               </div>
             )}
             {eliminated > 0 && (
               <div>
                 <div style={mutedLabel}>FLAGGED FOR ELIMINATION</div>
-                <div style={{ fontFamily: "Fraunces, serif", fontSize: 22, fontWeight: 700, color: colors.inkSoft }}>{eliminated}</div>
+                <div style={{ fontFamily: "var(--joy-font-head)", fontSize: 22, fontWeight: 700, color: colors.inkSoft }}>{eliminated}</div>
                 <div style={{ fontSize: 11, color: colors.inkSoft }}>not urgent, not important — drop them</div>
               </div>
             )}
@@ -1109,10 +1192,10 @@ function ProgressNarrative({ state, summary, totalJoy, burnoutCount }) {
         <Sparkles size={14} color={colors.rust} />
         <span style={mutedLabel}>THE READ</span>
       </div>
-      <div style={{ fontFamily: "Fraunces, serif", fontSize: 18, fontStyle: "italic", lineHeight: 1.45, color: colors.ink }}>
+      <div style={{ fontFamily: "var(--joy-font-head)", fontSize: 18, fontStyle: "italic", lineHeight: 1.45, color: colors.ink }}>
         {read}
       </div>
-      <div style={{ marginTop: 10, fontSize: 12, color: colors.inkSoft, fontFamily: "Fraunces, serif" }}>
+      <div style={{ marginTop: 10, fontSize: 12, color: colors.inkSoft, fontFamily: "var(--joy-font-head)" }}>
         Goal: from <em>{state.goal.from || "—"}</em> to <em>{state.goal.to || "—"}</em>.
       </div>
     </div>
@@ -1127,7 +1210,7 @@ function BigStat({ icon: Icon, label, value, tone = "ink" }) {
         <Icon size={12} />
         <span style={mutedLabel}>{label}</span>
       </div>
-      <div style={{ fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 36, lineHeight: 1, marginTop: 6, color: tones[tone], letterSpacing: "-0.02em", fontStyle: "italic" }}>
+      <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 800, fontSize: 36, lineHeight: 1, marginTop: 6, color: tones[tone], letterSpacing: "-0.02em", fontStyle: "italic" }}>
         {value}
       </div>
     </div>
@@ -1142,9 +1225,9 @@ function SectionHead({ eyebrow, title, sub, action }) {
   return (
     <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 12, flexWrap: "wrap", paddingBottom: 12, borderBottom: `1px solid ${colors.rule}` }}>
       <div>
-        <div style={{ fontFamily: "Geist Mono, monospace", fontSize: 11, letterSpacing: "0.18em", color: colors.rust }}>{eyebrow} ──</div>
-        <h2 style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontStyle: "italic", fontSize: "clamp(28px, 5vw, 40px)", letterSpacing: "-0.02em", margin: "4px 0 4px" }}>{title}</h2>
-        <div style={{ fontSize: 13, color: colors.inkSoft, fontFamily: "Fraunces, serif" }}>{sub}</div>
+        <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.18em", color: colors.rust }}>{eyebrow} ──</div>
+        <h2 style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontStyle: "italic", fontSize: "clamp(28px, 5vw, 40px)", letterSpacing: "-0.02em", margin: "4px 0 4px" }}>{title}</h2>
+        <div style={{ fontSize: 13, color: colors.inkSoft, fontFamily: "var(--joy-font-head)" }}>{sub}</div>
       </div>
       {action}
     </div>
@@ -1156,7 +1239,7 @@ function Empty({ children }) {
     <div style={{
       marginTop: 24, padding: 32, textAlign: "center",
       border: `1px dashed ${colors.rule}`, borderRadius: 12,
-      fontFamily: "Fraunces, serif", fontStyle: "italic", color: colors.inkSoft,
+      fontFamily: "var(--joy-font-head)", fontStyle: "italic", color: colors.inkSoft,
     }}>{children}</div>
   );
 }
@@ -1171,20 +1254,20 @@ const card = {
 };
 
 const mutedLabel = {
-  fontFamily: "Geist Mono, monospace", fontSize: 10,
+  fontFamily: "var(--joy-font-mono)", fontSize: 10,
   letterSpacing: "0.12em", textTransform: "uppercase", color: colors.inkSoft,
 };
 
 const inputBare = {
   width: "100%", border: "none", background: "transparent", outline: "none",
-  color: colors.ink, fontFamily: "Geist, sans-serif", fontSize: 15, padding: "4px 0",
+  color: colors.ink, fontFamily: "var(--joy-font-body)", fontSize: 15, padding: "4px 0",
 };
 
 const tabBtn = {
   display: "inline-flex", alignItems: "center", gap: 5,
   padding: "7px 12px", borderRadius: 999,
   background: "transparent", border: `1px solid transparent`,
-  fontFamily: "Geist Mono, monospace", fontSize: 11, letterSpacing: "0.06em",
+  fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.06em",
   color: colors.inkSoft, cursor: "pointer", textTransform: "uppercase",
   whiteSpace: "nowrap",
 };
@@ -1196,7 +1279,7 @@ const btnGhost = {
   display: "inline-flex", alignItems: "center", gap: 4,
   padding: "5px 10px", borderRadius: 999,
   background: "transparent", border: `1px solid ${colors.rule}`,
-  fontFamily: "Geist Mono, monospace", fontSize: 10, letterSpacing: "0.06em",
+  fontFamily: "var(--joy-font-mono)", fontSize: 10, letterSpacing: "0.06em",
   color: colors.inkSoft, cursor: "pointer", textTransform: "uppercase",
 };
 
@@ -1204,7 +1287,7 @@ const btnPrimary = {
   display: "inline-flex", alignItems: "center", gap: 5,
   padding: "8px 14px", borderRadius: 999,
   background: colors.ink, color: colors.paper, border: "none",
-  fontFamily: "Geist Mono, monospace", fontSize: 11, letterSpacing: "0.06em",
+  fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.06em",
   cursor: "pointer", textTransform: "uppercase",
 };
 
@@ -1218,6 +1301,6 @@ const btnIcon = {
 const warnBox = {
   marginTop: 10, padding: "8px 10px", borderRadius: 8,
   background: "rgba(184,73,42,0.10)", border: `1px solid rgba(184,73,42,0.3)`,
-  color: colors.rustDeep, fontSize: 12, fontFamily: "Fraunces, serif",
+  color: colors.rustDeep, fontSize: 12, fontFamily: "var(--joy-font-head)",
   display: "flex", alignItems: "center", gap: 6,
 };
