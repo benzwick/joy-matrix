@@ -13,7 +13,7 @@
 //                                       name lookup was ambiguous)
 
 import { quadrantOf } from "../App";
-import { findMember, findTask } from "./lookup";
+import { clamp, findCategory, findMember, findStakeholder, findTask } from "./lookup";
 
 function ok(extra = {}) { return JSON.stringify({ ok: true, ...extra }); }
 function err(error, extra = {}) { return JSON.stringify({ ok: false, error, ...extra }); }
@@ -53,7 +53,7 @@ function projectTask(t, state, assignments) {
   };
 }
 
-export function buildJoyMatrixTools({ getState, getDerived }) {
+export function buildJoyMatrixTools({ getState, getDerived, update }) {
   return [
     {
       name: "summarize_project",
@@ -193,6 +193,227 @@ export function buildJoyMatrixTools({ getState, getDerived }) {
             scores,
           },
         });
+      },
+    },
+
+    {
+      name: "set_goal",
+      description:
+        "Update the project's goal: where the team is now (from / A) and where they want to be (to / B). Pass either or both fields.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          from: { type: "string", description: "Where the team is now." },
+          to: { type: "string", description: "Where the team wants to be." },
+        },
+      },
+      execute: async (args) => {
+        update((s) => {
+          s.goal = s.goal || { from: "", to: "" };
+          if (typeof args.from === "string") s.goal.from = args.from;
+          if (typeof args.to === "string") s.goal.to = args.to;
+          return s;
+        });
+        return ok({ goal: getState().goal });
+      },
+    },
+
+    {
+      name: "add_member",
+      description:
+        "Add a new team member. Capacity is current bandwidth on a -3..+3 scale and defaults to 0 (neutral). Scores in every existing task are initialised to 0 for the new member.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Member name." },
+          capacity: { type: "integer", minimum: -3, maximum: 3, description: "Current bandwidth, -3..+3. Defaults to 0." },
+        },
+        required: ["name"],
+      },
+      execute: async (args) => {
+        const name = String(args.name || "").trim();
+        if (!name) return err("Missing member name.");
+        const capacity = clamp(args.capacity ?? 0, -3, 3);
+        update((s) => {
+          const id = "m" + Date.now();
+          s.members.push({ id, name, capacity, categoryScores: {} });
+          s.tasks.forEach((t) => {
+            t.scores[id] = { pleasure: 0, talent: 0 };
+          });
+          return s;
+        });
+        return ok({ added: { name, capacity } });
+      },
+    },
+
+    {
+      name: "remove_member",
+      description: "Remove a team member by name. Also removes their per-task scores. Destructive — requires user approval.",
+      permission: true,
+      parameters: {
+        type: "object",
+        properties: { name: { type: "string", description: "Member name." } },
+        required: ["name"],
+      },
+      execute: async (args) => {
+        const hit = findMember(getState(), args.name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const id = hit.item.id;
+        const removedName = hit.item.name;
+        update((s) => {
+          s.members = s.members.filter((m) => m.id !== id);
+          s.tasks.forEach((t) => {
+            if (t.scores) delete t.scores[id];
+          });
+          return s;
+        });
+        return ok({ removed: removedName });
+      },
+    },
+
+    {
+      name: "set_member_capacity",
+      description: "Set a member's current capacity on the -3..+3 scale. Lower values shrink their effort budget and discourage new assignments.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          capacity: { type: "integer", minimum: -3, maximum: 3 },
+        },
+        required: ["name", "capacity"],
+      },
+      execute: async (args) => {
+        const hit = findMember(getState(), args.name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const id = hit.item.id;
+        const newCap = clamp(args.capacity, -3, 3);
+        update((s) => {
+          const m = s.members.find((x) => x.id === id);
+          if (m) m.capacity = newCap;
+          return s;
+        });
+        return ok({ name: hit.item.name, capacity: newCap });
+      },
+    },
+
+    {
+      name: "add_task",
+      description:
+        "Add a new task. Optional: urgency, importance, effort (each 1-5, default 3/3/2), category name, stakeholder name. If a category is supplied, per-member scores auto-fill from that category's baselines.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          urgency: { type: "integer", minimum: 1, maximum: 5 },
+          importance: { type: "integer", minimum: 1, maximum: 5 },
+          effort: { type: "integer", minimum: 1, maximum: 5 },
+          category: { type: "string", description: "Category name (case-insensitive, substring OK)." },
+          stakeholder: { type: "string", description: "Stakeholder name (case-insensitive, substring OK)." },
+        },
+        required: ["title"],
+      },
+      execute: async (args) => {
+        const title = String(args.title || "").trim();
+        if (!title) return err("Missing task title.");
+        let categoryId = null;
+        if (args.category) {
+          const c = findCategory(getState(), args.category);
+          if (c.error) return err(c.error, { candidates: c.candidates });
+          categoryId = c.item.id;
+        }
+        let stakeholderId = null;
+        if (args.stakeholder) {
+          const x = findStakeholder(getState(), args.stakeholder);
+          if (x.error) return err(x.error, { candidates: x.candidates });
+          stakeholderId = x.item.id;
+        }
+        const urgency = clamp(args.urgency ?? 3, 1, 5);
+        const importance = clamp(args.importance ?? 3, 1, 5);
+        const effort = clamp(args.effort ?? 2, 1, 5);
+        update((s) => {
+          const id = "t" + Date.now();
+          const scores = {};
+          s.members.forEach((m) => {
+            scores[m.id] = { pleasure: 0, talent: 0, autoFilled: true };
+          });
+          const t = { id, title, categoryId, stakeholderId, urgency, importance, effort, scores };
+          // Mirror the UI's auto-fill rule for category-baseline scores.
+          if (categoryId) {
+            s.members.forEach((m) => {
+              const baseline = (m.categoryScores || {})[categoryId];
+              if (!baseline) return;
+              scores[m.id] = {
+                pleasure: baseline.pleasure ?? 0,
+                talent: baseline.talent ?? 0,
+                autoFilled: true,
+              };
+            });
+          }
+          s.tasks.push(t);
+          return s;
+        });
+        return ok({ added: { title, urgency, importance, effort, categoryId, stakeholderId } });
+      },
+    },
+
+    {
+      name: "remove_task",
+      description: "Remove a task by title. Destructive — requires user approval.",
+      permission: true,
+      parameters: {
+        type: "object",
+        properties: { title: { type: "string" } },
+        required: ["title"],
+      },
+      execute: async (args) => {
+        const hit = findTask(getState(), args.title);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const removed = hit.item.title;
+        const id = hit.item.id;
+        update((s) => {
+          s.tasks = s.tasks.filter((t) => t.id !== id);
+          return s;
+        });
+        return ok({ removed });
+      },
+    },
+
+    {
+      name: "update_task",
+      description: "Update a task's urgency, importance, effort, or title.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Current task title to find." },
+          urgency: { type: "integer", minimum: 1, maximum: 5 },
+          importance: { type: "integer", minimum: 1, maximum: 5 },
+          effort: { type: "integer", minimum: 1, maximum: 5 },
+          new_title: { type: "string", description: "New title, if renaming." },
+        },
+        required: ["title"],
+      },
+      execute: async (args) => {
+        const hit = findTask(getState(), args.title);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const id = hit.item.id;
+        update((s) => {
+          const t = s.tasks.find((x) => x.id === id);
+          if (!t) return s;
+          if (args.urgency !== undefined) t.urgency = clamp(args.urgency, 1, 5);
+          if (args.importance !== undefined) t.importance = clamp(args.importance, 1, 5);
+          if (args.effort !== undefined) t.effort = clamp(args.effort, 1, 5);
+          if (typeof args.new_title === "string" && args.new_title.trim()) {
+            t.title = args.new_title.trim();
+          }
+          return s;
+        });
+        const after = getState().tasks.find((t) => t.id === id);
+        return ok({ updated: { title: after.title, urgency: after.urgency, importance: after.importance, effort: after.effort } });
       },
     },
   ];

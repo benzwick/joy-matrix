@@ -964,7 +964,7 @@ function AppInner() {
       </footer>
 
       {customizeOpen && <CustomizePanel onClose={() => setCustomizeOpen(false)} />}
-      <JoyMatrixChat state={state} summary={summary} assignments={assignments} />
+      <JoyMatrixChat state={state} summary={summary} assignments={assignments} update={update} />
     </div>
   );
 }

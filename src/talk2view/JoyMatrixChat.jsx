@@ -27,7 +27,7 @@ function parseSkill(raw) {
 
 const SKILLS = [parseSkill(joyMatrixSkill)];
 
-export default function JoyMatrixChat({ state, summary, assignments }) {
+export default function JoyMatrixChat({ state, summary, assignments, update }) {
   const [showCallout, setShowCallout] = useState(true);
   const dismiss = () => setShowCallout(false);
 
@@ -37,12 +37,15 @@ export default function JoyMatrixChat({ state, summary, assignments }) {
   stateRef.current = state;
   const derivedRef = useRef({ summary, assignments });
   derivedRef.current = { summary, assignments };
+  const updateRef = useRef(update);
+  updateRef.current = update;
 
   const tools = useMemo(
     () =>
       buildJoyMatrixTools({
         getState: () => stateRef.current,
         getDerived: () => derivedRef.current,
+        update: (fn) => updateRef.current(fn),
       }),
     []
   );
