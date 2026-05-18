@@ -171,6 +171,11 @@ const QUADRANT_META = {
   ELIMINATE: { label: "ELIMINATE", sub: "neither — drop or defer",  weight: null },
 };
 
+// Workflow order: process delegations first (others run in parallel),
+// then your own urgent work, then the strategic investments, then drop
+// what's left. Numbers are surfaced in the UI and in the explainer.
+const QUADRANT_ORDER = { DELEGATE: 1, DO: 2, SCHEDULE: 3, ELIMINATE: 4 };
+
 // budget in effort units: capacity -3→1, 0→4, +3→7
 const budgetOf = (m) => Math.max(0.5, 4 + m.capacity);
 
@@ -1058,7 +1063,7 @@ function MatrixView({ state, assignments, onEditTask }) {
             }}>
               <div>
                 <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 22, color: cm.color, letterSpacing: "-0.02em" }}>
-                  {meta.label}
+                  <span style={{ opacity: 0.5, marginRight: 6 }}>{QUADRANT_ORDER[q]}.</span>{meta.label}
                 </div>
                 <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, letterSpacing: "0.1em", color: colors.inkSoft, textTransform: "uppercase" }}>
                   {meta.sub}
@@ -1121,29 +1126,61 @@ function MatrixView({ state, assignments, onEditTask }) {
 }
 
 function Legend() {
+  const [expanded, setExpanded] = useState(false);
   return (
     <div style={{
       marginTop: 18, padding: 14, borderRadius: 10,
       background: colors.bone, border: `1px solid ${colors.rule}`,
-      display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12,
-      fontSize: 12, color: colors.inkSoft, lineHeight: 1.5,
     }}>
-      <div>
-        <div style={{ ...mutedLabel, color: colors.rustDeep, marginBottom: 4 }}>DO — talent first</div>
-        High-urgency, high-importance. Algorithm weighs talent heaviest so it gets done well, fast.
+      <div style={{
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12,
+        fontSize: 12, color: colors.inkSoft, lineHeight: 1.5,
+      }}>
+        <div>
+          <div style={{ ...mutedLabel, color: colors.ochre, marginBottom: 4 }}>1. DELEGATE — capacity first</div>
+          Urgent but not important. Capacity sets a ceiling, not a target — planning well doesn't load you with leftover work.
+        </div>
+        <div>
+          <div style={{ ...mutedLabel, color: colors.rustDeep, marginBottom: 4 }}>2. DO — talent first</div>
+          High-urgency, high-importance. Algorithm weighs talent heaviest so it gets done well, fast.
+        </div>
+        <div>
+          <div style={{ ...mutedLabel, color: colors.teal, marginBottom: 4 }}>3. SCHEDULE — pleasure first</div>
+          Important, not urgent. Pleasure dominates — this is where joy compounds into mastery.
+        </div>
+        <div>
+          <div style={{ ...mutedLabel, color: colors.inkSoft, marginBottom: 4 }}>4. ELIMINATE — kill it</div>
+          Neither urgent nor important. Don't assign. Don't do.
+        </div>
       </div>
-      <div>
-        <div style={{ ...mutedLabel, color: colors.teal, marginBottom: 4 }}>SCHEDULE — pleasure first</div>
-        Important, not urgent. Pleasure dominates — this is where joy compounds into mastery.
+      <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+        <button onClick={() => setExpanded(v => !v)} style={{
+          background: "transparent", border: "none", cursor: "pointer",
+          color: colors.teal, fontFamily: "var(--joy-font-mono)", fontSize: 11,
+          letterSpacing: "0.1em", textTransform: "uppercase", padding: "2px 4px",
+        }}>
+          {expanded ? "less" : "more"}
+        </button>
       </div>
-      <div>
-        <div style={{ ...mutedLabel, color: colors.ochre, marginBottom: 4 }}>DELEGATE — capacity first</div>
-        Urgent but not important. Goes to whoever has bandwidth to spare, regardless of love for it.
-      </div>
-      <div>
-        <div style={{ ...mutedLabel, color: colors.inkSoft, marginBottom: 4 }}>ELIMINATE — kill it</div>
-        Neither urgent nor important. Don't assign. Don't do.
-      </div>
+      {expanded && (
+        <div style={{ marginTop: 10, paddingTop: 12, borderTop: `1px solid ${colors.rule}`, fontSize: 13, lineHeight: 1.65, color: colors.inkSoft }}>
+          <p style={{ margin: "0 0 12px" }}>
+            The Joy Matrix sorts tasks by <strong>urgency</strong> (how soon) × <strong>importance</strong> (how much it matters). The numbers above are workflow order, not grid positions.
+          </p>
+          <p style={{ margin: "0 0 12px" }}>
+            <strong>1. Delegate</strong> so other people can begin in parallel. The Joy Matrix routes each task by fit — <em>pleasure × talent × capacity</em> — with capacity acting as a ceiling, not a target, so reliable planners aren't loaded with leftover work.
+          </p>
+          <p style={{ margin: "0 0 12px" }}>
+            <strong>2. Do</strong> the urgent, important work that remains with you after delegation.
+          </p>
+          <p style={{ margin: "0 0 12px" }}>
+            <strong>3. Schedule</strong> the important-but-not-urgent work, where expertise compounds and next quarter's fires are prevented. It's the quadrant most people under-invest in.
+          </p>
+          <p style={{ margin: 0 }}>
+            <strong>4. Eliminate</strong> the residue: anything still in the bottom-right after the first three passes.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
