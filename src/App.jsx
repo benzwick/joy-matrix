@@ -948,6 +948,20 @@ function AppInner() {
           <Github size={11} />
           open source · benzwick/joy-matrix
         </a>
+        <a
+          href="https://talk2view.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: colors.inkSoft, textDecoration: "none",
+            display: "inline-flex", alignItems: "center", gap: 8,
+            marginTop: 4,
+          }}
+        >
+          <span>Powered by</span>
+          <img src="talk2view-logo.png" alt="Talk2View" style={{ height: 16, width: "auto" }} />
+          <span>— Software you can talk to…</span>
+        </a>
       </footer>
 
       {customizeOpen && <CustomizePanel onClose={() => setCustomizeOpen(false)} />}
