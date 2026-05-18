@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useContext, createContext } from "react";
 import {
   Plus, X, Sparkles, AlertTriangle, Trash2, RefreshCw,
-  Zap, Heart, Brain, Battery, ArrowRight, Target, Users, ListTodo, Grid3x3, Activity
+  Zap, Heart, Brain, Battery, ArrowRight, Target, Users, ListTodo, Grid3x3, Activity,
+  Sun, Moon
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,6 +258,7 @@ const colors = {
 const PRESETS = {
   workbook: {
     label: "Workbook",
+    mode: "light",
     vars: {
       "--joy-paper":      "#f4ebdb",
       "--joy-paper-deep": "#ece1cb",
@@ -270,15 +272,39 @@ const PRESETS = {
       "--joy-bone":       "#fbf6ec",
     },
   },
+  // Dark counterpart: paper darkens to a warm near-black, ink becomes
+  // cream. Accents brighten a notch so they stay readable on dark.
+  midnight: {
+    label: "Midnight",
+    mode: "dark",
+    vars: {
+      "--joy-paper":      "#16110d",
+      "--joy-paper-deep": "#1f1812",
+      "--joy-ink":        "#ebe2d0",
+      "--joy-ink-soft":   "#a8997f",
+      "--joy-rule":       "rgba(235,226,208,0.14)",
+      "--joy-rust":       "#e07050",
+      "--joy-rust-deep":  "#f59072",
+      "--joy-teal":       "#6fb3b3",
+      "--joy-ochre":      "#e8a647",
+      "--joy-bone":       "#221b15",
+    },
+  },
 };
 
 const DEFAULT_THEME = { preset: "workbook", overrides: {} };
+
+// Pick an initial preset that respects the user's OS preference on first visit.
+function detectInitialPreset() {
+  if (typeof window === "undefined" || !window.matchMedia) return "workbook";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "midnight" : "workbook";
+}
 
 const ThemeContext = createContext({ theme: DEFAULT_THEME, setTheme: () => {} });
 function useTheme() { return useContext(ThemeContext); }
 
 function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(() => loadTheme() || DEFAULT_THEME);
+  const [theme, setThemeState] = useState(() => loadTheme() || { ...DEFAULT_THEME, preset: detectInitialPreset() });
   useEffect(() => { saveTheme(theme); }, [theme]);
   const setTheme = (next) => setThemeState((t) => (typeof next === "function" ? next(t) : next));
   const preset = PRESETS[theme.preset] ?? PRESETS.workbook;
@@ -346,6 +372,9 @@ function AppInner() {
   const [state, setState] = useState(null);
   const [tab, setTab] = useState("matrix");
   const [editingTask, setEditingTask] = useState(null);
+  const { theme, setTheme } = useTheme();
+  const isDark = (PRESETS[theme.preset]?.mode ?? "light") === "dark";
+  const toggleMode = () => setTheme(t => ({ ...t, preset: isDark ? "workbook" : "midnight" }));
 
   // inject fonts
   useEffect(() => {
@@ -441,6 +470,9 @@ function AppInner() {
             JOY-MATRIX · v1
           </div>
           <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={toggleMode} title={isDark ? "Switch to light" : "Switch to dark"} style={btnGhost} aria-label="Toggle light/dark">
+              {isDark ? <Sun size={12} /> : <Moon size={12} />} {isDark ? "light" : "dark"}
+            </button>
             <button onClick={reset} title="Load demo data" style={btnGhost}>
               <RefreshCw size={12} /> demo
             </button>
