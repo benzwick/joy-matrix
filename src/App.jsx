@@ -478,6 +478,19 @@ function buildGoogleFontsUrl({ head, body, mono }) {
   return `https://fonts.googleapis.com/css2?${params}&display=swap`;
 }
 
+// Live viewport width for responsive inline styles. Returns 1024 on the
+// server and during the first paint so layouts default to the desktop
+// branch — mobile-specific tweaks kick in once mounted.
+function useViewportWidth() {
+  const [w, setW] = useState(() => (typeof window === "undefined" ? 1024 : window.innerWidth));
+  useEffect(() => {
+    const onResize = () => setW(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return w;
+}
+
 // Pick an initial mode that respects the user's OS preference on first visit.
 function detectInitialMode() {
   if (typeof window === "undefined" || !window.matchMedia) return "light";
@@ -515,6 +528,7 @@ function useTheme() { return useContext(ThemeContext); }
 
 function CustomizePanel({ onClose }) {
   const { theme, setTheme } = useTheme();
+  const isPhone = useViewportWidth() < 480;
   const preset = PRESETS[theme.themeId] ?? PRESETS[DEFAULT_THEME.themeId];
   const presetVars = preset[theme.mode] ?? preset.light;
   const setSlot = (key, value) =>
@@ -535,7 +549,11 @@ function CustomizePanel({ onClose }) {
   const fontSlotLabel = { head: "Heading", body: "Body", mono: "Mono" };
   return (
     <div style={{
-      position: "fixed", top: 16, right: 16, zIndex: 50, width: 280,
+      position: "fixed", top: 16, right: 16, zIndex: 50,
+      width: isPhone ? "auto" : 280,
+      left: isPhone ? 16 : "auto",
+      maxHeight: "calc(100vh - 32px)",
+      overflowY: "auto",
       background: colors.bone, border: `1px solid ${colors.rule}`, borderRadius: 14,
       boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
       padding: 14,
@@ -750,6 +768,8 @@ function AppInner() {
   const toggleMode = () => setTheme(t => ({ ...t, mode: t.mode === "dark" ? "light" : "dark" }));
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const fileInputRef = React.useRef(null);
+  const vw = useViewportWidth();
+  const isPhone = vw < 480;
 
   // load
   useEffect(() => {
@@ -878,7 +898,7 @@ function AppInner() {
           <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.18em", color: colors.inkSoft }}>
             THE JOY MATRIX · v1
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 6 }}>
             <button onClick={toggleMode} title={isDark ? "Switch to light" : "Switch to dark"} style={btnGhost} aria-label="Toggle light/dark">
               {isDark ? <Sun size={12} /> : <Moon size={12} />} {isDark ? "light" : "dark"}
             </button>
@@ -919,25 +939,33 @@ function AppInner() {
         <div style={{
           marginTop: 20, padding: 16, borderRadius: 12,
           background: colors.bone, border: `1px solid ${colors.rule}`,
-          display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center",
+          display: "grid",
+          gridTemplateColumns: isPhone ? "1fr" : "1fr auto 1fr",
+          gap: isPhone ? 10 : 12,
+          alignItems: "center",
         }}>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div style={mutedLabel}>FROM (A)</div>
-            <input
+            <AutoGrowTextarea
               value={state.goal.from}
-              onChange={(e) => update(s => { s.goal.from = e.target.value; return s; })}
+              onChange={(v) => update(s => { s.goal.from = v; return s; })}
               placeholder="where you are now"
-              style={inputBare}
             />
           </div>
-          <ArrowRight size={20} color={colors.inkSoft} />
-          <div>
+          <ArrowRight
+            size={20}
+            color={colors.inkSoft}
+            style={{
+              transform: isPhone ? "rotate(90deg)" : "none",
+              justifySelf: isPhone ? "center" : "auto",
+            }}
+          />
+          <div style={{ minWidth: 0 }}>
             <div style={{ ...mutedLabel, color: colors.teal }}>TO (B)</div>
-            <input
+            <AutoGrowTextarea
               value={state.goal.to}
-              onChange={(e) => update(s => { s.goal.to = e.target.value; return s; })}
+              onChange={(v) => update(s => { s.goal.to = v; return s; })}
               placeholder="where you want to be"
-              style={inputBare}
             />
           </div>
         </div>
@@ -948,9 +976,14 @@ function AppInner() {
         position: "sticky", top: 0, zIndex: 10,
         background: `color-mix(in srgb, ${colors.paper} 93%, transparent)`, backdropFilter: "blur(8px)",
         borderTop: `1px solid ${colors.rule}`, borderBottom: `1px solid ${colors.rule}`,
-        padding: "10px 16px", marginBottom: 4,
+        padding: isPhone ? "8px 10px" : "10px 16px", marginBottom: 4,
       }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", gap: 4, overflowX: "auto" }}>
+        <div style={{
+          maxWidth: 1100, margin: "0 auto",
+          display: "flex",
+          gap: isPhone ? 2 : 4,
+          justifyContent: isPhone ? "space-between" : "flex-start",
+        }}>
           {[
             ["matrix",  "Matrix",  Grid3x3],
             ["team",    "Team",    Users],
@@ -958,9 +991,11 @@ function AppInner() {
             ["insights","Insights",Activity],
           ].map(([key, label, Icon]) => (
             <button key={key} onClick={() => setTab(key)} style={{
-              ...tabBtn, ...(tab === key ? tabBtnActive : {}),
+              ...tabBtn,
+              ...(tab === key ? tabBtnActive : {}),
+              ...(isPhone ? { padding: "6px 8px", fontSize: 10, gap: 4, flex: "0 1 auto" } : {}),
             }}>
-              <Icon size={13} /> {label}
+              <Icon size={isPhone ? 12 : 13} /> {label}
             </button>
           ))}
         </div>
@@ -1029,6 +1064,7 @@ function AppInner() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function MatrixView({ state, assignments, onEditTask }) {
+  const isPhone = useViewportWidth() < 480;
   const groups = { DO: [], SCHEDULE: [], DELEGATE: [], ELIMINATE: [] };
   state.tasks.forEach(t => groups[quadrantOf(t)].push(t));
 
@@ -1049,20 +1085,23 @@ function MatrixView({ state, assignments, onEditTask }) {
 
       <div style={{
         display: "grid",
-        gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr", gap: 10,
-        marginTop: 16, minHeight: 480,
+        gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr",
+        gap: isPhone ? 6 : 10,
+        marginTop: 16, minHeight: isPhone ? 360 : 480,
       }}>
         {["DO", "SCHEDULE", "DELEGATE", "ELIMINATE"].map(q => {
           const meta = QUADRANT_META[q];
           const cm = cellMeta[q];
           return (
             <div key={q} style={{
-              borderRadius: 14, padding: "14px 14px 10px",
+              borderRadius: 14,
+              padding: isPhone ? "10px 10px 8px" : "14px 14px 10px",
               background: cm.bg, border: `1px solid ${colors.rule}`,
-              display: "flex", flexDirection: "column", gap: 8, minHeight: 220,
+              display: "flex", flexDirection: "column", gap: 8,
+              minHeight: isPhone ? 160 : 220,
             }}>
               <div>
-                <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 22, color: cm.color, letterSpacing: "-0.02em" }}>
+                <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: isPhone ? 18 : 22, color: cm.color, letterSpacing: "-0.02em" }}>
                   <span style={{ opacity: 0.5, marginRight: 6 }}>{QUADRANT_ORDER[q]}.</span>{meta.label}
                 </div>
                 <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, letterSpacing: "0.1em", color: colors.inkSoft, textTransform: "uppercase" }}>
@@ -1339,6 +1378,7 @@ function Stat({ label, value, tone = "ink" }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function TasksView({ state, update, addTask, removeTask, editing, setEditing, assignments, setTaskCategory }) {
+  const isPhone = useViewportWidth() < 480;
   return (
     <div>
       <SectionHead
@@ -1363,12 +1403,12 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
           const q = quadrantOf(t);
           return (
             <div key={t.id} style={card}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: isPhone ? 4 : 8 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <input
                     value={t.title}
                     onChange={(e) => update(st => { st.tasks.find(x => x.id === t.id).title = e.target.value; return st; })}
-                    style={{ ...inputBare, fontFamily: "var(--joy-font-head)", fontSize: 18, fontWeight: 600, letterSpacing: "-0.01em", padding: 0 }}
+                    style={{ ...inputBare, fontFamily: "var(--joy-font-head)", fontSize: isPhone ? 16 : 18, fontWeight: 600, letterSpacing: "-0.01em", padding: 0 }}
                   />
                   <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                     <Pill tone={q === "DO" ? "rust" : q === "SCHEDULE" ? "teal" : "ink"}>{q}</Pill>
@@ -1376,11 +1416,17 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                     {a?.burnoutRisk && <Pill tone="warn"><AlertTriangle size={9} style={{ display: "inline", verticalAlign: "middle" }} /> risk</Pill>}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <button onClick={() => setEditing(isOpen ? null : t.id)} style={btnGhost}>
-                    {isOpen ? "close" : "edit"}
+                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <button
+                    onClick={() => setEditing(isOpen ? null : t.id)}
+                    style={isPhone ? btnIcon : btnGhost}
+                    title={isOpen ? "Close editor" : "Edit task"}
+                    aria-label={isOpen ? "Close editor" : "Edit task"}
+                  >
+                    {isPhone ? (isOpen ? <X size={14}/> : "✎") : (isOpen ? "close" : "edit")}
                   </button>
-                  <button onClick={() => removeTask(t.id)} style={btnIcon}><X size={14}/></button>
+                  {!isPhone && <button onClick={() => removeTask(t.id)} style={btnIcon}><X size={14}/></button>}
+                  {isPhone && !isOpen && <button onClick={() => removeTask(t.id)} style={btnIcon} title="Delete task" aria-label="Delete task"><Trash2 size={13}/></button>}
                 </div>
               </div>
 
@@ -1797,6 +1843,35 @@ function Empty({ children }) {
       border: `1px dashed ${colors.rule}`, borderRadius: 12,
       fontFamily: "var(--joy-font-head)", fontStyle: "italic", color: colors.inkSoft,
     }}>{children}</div>
+  );
+}
+
+// Single/multi-line text input that auto-grows to fit its content so long
+// values stay fully visible. Used for the goal box where one-line inputs
+// would clip long strings on narrow viewports.
+function AutoGrowTextarea({ value, onChange, placeholder, style }) {
+  const ref = React.useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={1}
+      style={{
+        ...inputBare,
+        resize: "none",
+        lineHeight: 1.35,
+        overflow: "hidden",
+        ...style,
+      }}
+    />
   );
 }
 
