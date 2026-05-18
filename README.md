@@ -5,10 +5,9 @@ member's **pleasure**, **talent**, and current **capacity** (each on a -3 to +3
 scale) — then assigns work to move from A to B as fast as possible while
 eliminating burnout and maximizing joy.
 
-## Live demo
+## Live site
 
-After deploying (instructions below), your app will live at
-`https://YOUR-USERNAME.github.io/joy-matrix/`.
+[joy-matrix.com](https://joy-matrix.com)
 
 ## Run locally
 
@@ -19,28 +18,18 @@ npm run dev
 
 Open http://localhost:5173.
 
-## Deploy to GitHub Pages
+## Deploy
 
-1. **Create a new GitHub repo** named `joy-matrix` (or whatever you prefer — see
-   step 4 if you rename).
-2. **Push this code** to the repo:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git branch -M main
-   git remote add origin https://github.com/YOUR-USERNAME/joy-matrix.git
-   git push -u origin main
-   ```
-3. **Enable GitHub Pages**: in your repo go to *Settings → Pages*, and under
-   *Source* select **GitHub Actions**.
-4. **If you used a different repo name**, edit `vite.config.js` and change
-   `repoName` to match. Push the change.
-5. The included workflow (`.github/workflows/deploy.yml`) builds and deploys
-   automatically on every push to `main`. First deploy takes about a minute.
+The repo is configured to deploy from `main` to GitHub Pages with the custom
+apex domain `joy-matrix.com`:
 
-For a **user/organization site** (`username.github.io`), set `base: '/'` in
-`vite.config.js` instead.
+- `vite.config.js` serves at the root path (`base: '/'`)
+- `public/CNAME` declares the custom domain to GitHub Pages
+- `.github/workflows/deploy.yml` builds and publishes on every push to `main`
+
+To deploy your own fork at a different domain, edit `public/CNAME` (or delete
+it for a `username.github.io/repo-name/` subpath deploy and set `base` in
+`vite.config.js` accordingly).
 
 ## Stack
 
