@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useContext, createContext } from "
 import {
   Plus, X, Sparkles, AlertTriangle, Trash2, RefreshCw,
   Zap, Heart, Brain, Battery, ArrowRight, Target, Users, ListTodo, Grid3x3, Activity,
-  Sun, Moon
+  Sun, Moon, Palette, RotateCcw
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -300,8 +300,98 @@ function detectInitialPreset() {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "midnight" : "workbook";
 }
 
+// The main slots exposed in the color picker. Other CSS variables (rule,
+// paper-deep, rust-deep) intentionally stay tied to the preset so users
+// don't have to balance ten swatches to get a coherent look.
+const CUSTOMIZE_SLOTS = [
+  { key: "--joy-paper", label: "Paper",  sub: "background" },
+  { key: "--joy-ink",   label: "Ink",    sub: "text" },
+  { key: "--joy-rust",  label: "Rust",   sub: "DO accent" },
+  { key: "--joy-teal",  label: "Teal",   sub: "SCHEDULE accent" },
+  { key: "--joy-ochre", label: "Ochre",  sub: "DELEGATE accent" },
+];
+
 const ThemeContext = createContext({ theme: DEFAULT_THEME, setTheme: () => {} });
 function useTheme() { return useContext(ThemeContext); }
+
+function CustomizePanel({ onClose }) {
+  const { theme, setTheme } = useTheme();
+  const preset = PRESETS[theme.preset] ?? PRESETS.workbook;
+  const setSlot = (key, value) =>
+    setTheme(t => ({ ...t, overrides: { ...(t.overrides || {}), [key]: value } }));
+  const resetSlot = (key) =>
+    setTheme(t => {
+      const { [key]: _, ...rest } = (t.overrides || {});
+      return { ...t, overrides: rest };
+    });
+  const resetAll = () => setTheme(t => ({ ...t, overrides: {} }));
+  const switchPreset = (p) => setTheme(t => ({ ...t, preset: p }));
+  return (
+    <div style={{
+      position: "fixed", top: 16, right: 16, zIndex: 50, width: 280,
+      background: colors.bone, border: `1px solid ${colors.rule}`, borderRadius: 14,
+      boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
+      padding: 14,
+      fontFamily: "Geist, sans-serif", color: colors.ink,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+        <div style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 18, fontStyle: "italic", letterSpacing: "-0.01em" }}>
+          Customize
+        </div>
+        <button onClick={onClose} style={btnIcon} aria-label="Close customize panel"><X size={14}/></button>
+      </div>
+
+      <div style={{ ...mutedLabel, marginBottom: 6 }}>PRESET</div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {Object.entries(PRESETS).map(([key, p]) => (
+          <button key={key} onClick={() => switchPreset(key)} style={{
+            ...btnGhost, flex: 1,
+            background: theme.preset === key ? colors.ink : "transparent",
+            color: theme.preset === key ? colors.paper : colors.inkSoft,
+            borderColor: theme.preset === key ? colors.ink : "var(--joy-rule)",
+          }}>{p.label}</button>
+        ))}
+      </div>
+
+      <div style={{ ...mutedLabel, marginBottom: 6 }}>COLORS</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {CUSTOMIZE_SLOTS.map(slot => {
+          const current = (theme.overrides && theme.overrides[slot.key]) || preset.vars[slot.key];
+          const isOverridden = !!(theme.overrides && theme.overrides[slot.key]);
+          return (
+            <div key={slot.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <label style={{
+                position: "relative", width: 36, height: 36, borderRadius: 10,
+                background: current, border: `1px solid ${colors.rule}`, cursor: "pointer",
+                flexShrink: 0, overflow: "hidden",
+              }} title="Pick a color">
+                <input
+                  type="color"
+                  value={current}
+                  onChange={(e) => setSlot(slot.key, e.target.value)}
+                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", border: "none" }}
+                />
+              </label>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: "Fraunces, serif", fontWeight: 600, fontSize: 14, lineHeight: 1.1 }}>{slot.label}</div>
+                <div style={{ fontFamily: "Geist Mono, monospace", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.06em" }}>{slot.sub} · {current}</div>
+              </div>
+              {isOverridden && (
+                <button onClick={() => resetSlot(slot.key)} style={btnIcon} title="Reset to preset">
+                  <RotateCcw size={12}/>
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <button onClick={resetAll} style={{ ...btnGhost, marginTop: 14, width: "100%", justifyContent: "center" }}>
+        <RotateCcw size={11}/> Reset all to preset
+      </button>
+    </div>
+  );
+}
 
 function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(() => loadTheme() || { ...DEFAULT_THEME, preset: detectInitialPreset() });
@@ -375,6 +465,7 @@ function AppInner() {
   const { theme, setTheme } = useTheme();
   const isDark = (PRESETS[theme.preset]?.mode ?? "light") === "dark";
   const toggleMode = () => setTheme(t => ({ ...t, preset: isDark ? "workbook" : "midnight" }));
+  const [customizeOpen, setCustomizeOpen] = useState(false);
 
   // inject fonts
   useEffect(() => {
@@ -473,6 +564,9 @@ function AppInner() {
             <button onClick={toggleMode} title={isDark ? "Switch to light" : "Switch to dark"} style={btnGhost} aria-label="Toggle light/dark">
               {isDark ? <Sun size={12} /> : <Moon size={12} />} {isDark ? "light" : "dark"}
             </button>
+            <button onClick={() => setCustomizeOpen(o => !o)} title="Customize colors" style={btnGhost} aria-label="Customize colors">
+              <Palette size={12} /> customize
+            </button>
             <button onClick={reset} title="Load demo data" style={btnGhost}>
               <RefreshCw size={12} /> demo
             </button>
@@ -557,6 +651,8 @@ function AppInner() {
       <footer style={{ textAlign: "center", padding: "24px 16px 40px", fontFamily: "Geist Mono, monospace", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.08em" }}>
         ─── designed for sustainable speed ───
       </footer>
+
+      {customizeOpen && <CustomizePanel onClose={() => setCustomizeOpen(false)} />}
     </div>
   );
 }
