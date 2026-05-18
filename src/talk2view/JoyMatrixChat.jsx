@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { Talk2View, ChatWidget } from "@talk2view/sdk/ui";
+import { useState, useEffect, useRef } from "react";
+import { Talk2View, ChatWidget, useTalk2View } from "@talk2view/sdk/ui";
+import systemPrompt from "./system-prompt.md?raw";
+import joyMatrixSkill from "./skills/joy-matrix.md?raw";
 
 const PARTNER_KEY = "pk_live_50f4feb3bda0eb5b3a1c4b5faea0a567e8cd984608d989d0";
 
@@ -9,17 +11,52 @@ const SUGGESTIONS = [
   "What do the four quadrants mean?",
 ];
 
+// Parse a YAML-ish frontmatter block + body out of a markdown file.
+// Returns { name, description, content }.
+function parseSkill(raw) {
+  const m = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
+  if (!m) return { name: "", description: "", content: raw };
+  const meta = {};
+  for (const line of m[1].split("\n")) {
+    const colon = line.indexOf(":");
+    if (colon === -1) continue;
+    meta[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
+  }
+  return { name: meta.name || "", description: meta.description || "", content: m[2] };
+}
+
+const SKILLS = [parseSkill(joyMatrixSkill)];
+
 export default function JoyMatrixChat() {
   const [showCallout, setShowCallout] = useState(true);
   const dismiss = () => setShowCallout(false);
   return (
-    <Talk2View partnerKey={PARTNER_KEY}>
+    <Talk2View partnerKey={PARTNER_KEY} systemPrompt={systemPrompt}>
+      <SkillBootstrap />
       <div onClick={dismiss}>
         <ChatWidget welcome={{ heading: "Ask The Joy Matrix", suggestions: SUGGESTIONS }} />
       </div>
       {showCallout && <Callout onDismiss={dismiss} />}
     </Talk2View>
   );
+}
+
+// Registers our domain skills with the SDK once per session.
+// Lives inside <Talk2View> so it has access to the t2v instance.
+function SkillBootstrap() {
+  const { t2v } = useTalk2View();
+  const registered = useRef(false);
+  useEffect(() => {
+    if (!t2v || registered.current) return;
+    registered.current = true;
+    for (const s of SKILLS) t2v.skills.add(s);
+    t2v.skills.register(SKILLS).catch((err) => {
+      // Non-fatal: the chat still works without skills, just with less
+      // context. Log so we notice in dev.
+      console.warn("[joy-matrix] skill registration failed:", err);
+    });
+  }, [t2v]);
+  return null;
 }
 
 function Callout({ onDismiss }) {
