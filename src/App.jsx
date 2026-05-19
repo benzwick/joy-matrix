@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useContext, createContext } from "
 import {
   Plus, X, Sparkles, AlertTriangle, Trash2, RefreshCw,
   Zap, Heart, Brain, Battery, ArrowRight, Target, Users, ListTodo, Grid3x3, Activity,
-  Sun, Moon, Palette, RotateCcw, Download, Upload, Github
+  Sun, Moon, Palette, RotateCcw, Download, Upload, Github, Linkedin, Instagram
 } from "lucide-react";
 import JoyMatrixChat from "./talk2view/JoyMatrixChat";
 
@@ -1026,6 +1026,53 @@ function AppInner() {
           <Github size={11} />
           open source · benzwick/joy-matrix
         </a>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2 }}>
+          <a
+            href="https://www.linkedin.com/in/benzwick"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Ben Zwick on LinkedIn"
+            title="Ben Zwick on LinkedIn"
+            style={{
+              color: colors.inkSoft, textDecoration: "none",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26, borderRadius: 999,
+              border: `1px solid ${colors.rule}`,
+            }}
+          >
+            <Linkedin size={13} />
+          </a>
+          <a
+            href="https://github.com/benzwick"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Ben Zwick on GitHub"
+            title="Ben Zwick on GitHub"
+            style={{
+              color: colors.inkSoft, textDecoration: "none",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26, borderRadius: 999,
+              border: `1px solid ${colors.rule}`,
+            }}
+          >
+            <Github size={13} />
+          </a>
+          <a
+            href="https://www.instagram.com/bennyzwick"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Ben Zwick on Instagram"
+            title="Ben Zwick on Instagram"
+            style={{
+              color: colors.inkSoft, textDecoration: "none",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26, borderRadius: 999,
+              border: `1px solid ${colors.rule}`,
+            }}
+          >
+            <Instagram size={13} />
+          </a>
+        </div>
         <a
           href="https://talk2view.com/"
           target="_blank"
