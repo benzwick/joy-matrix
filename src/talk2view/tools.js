@@ -17,8 +17,9 @@ import { clamp, findCategory, findMember, findStakeholder, findTask } from "./lo
 import { parseDueDateInput, formatDueDate, FUZZY_VALUES } from "../scheduling/dueDate";
 import { parseRangesInput, DAYS, normaliseRanges, weekdayNineToFive } from "../scheduling/availability";
 import { DAYTIMES, defaultWindows } from "../scheduling/windows";
+import { computeSchedule, hoursPerMember } from "../scheduling/schedule";
 
-const VALID_TABS = new Set(["matrix", "team", "tasks", "insights"]);
+const VALID_TABS = new Set(["matrix", "team", "tasks", "schedule", "insights"]);
 const VALID_MODES = new Set(["light", "dark"]);
 
 function ok(extra = {}) { return JSON.stringify({ ok: true, ...extra }); }
@@ -857,15 +858,55 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
       parameters: {
         type: "object",
         properties: {
-          name: { type: "string", enum: ["matrix", "team", "tasks", "insights"] },
+          name: { type: "string", enum: ["matrix", "team", "tasks", "schedule", "insights"] },
         },
         required: ["name"],
       },
       execute: async (args) => {
         const name = String(args.name || "").toLowerCase();
-        if (!VALID_TABS.has(name)) return err(`Unknown tab "${args.name}". Valid: matrix, team, tasks, insights.`);
+        if (!VALID_TABS.has(name)) return err(`Unknown tab "${args.name}". Valid: matrix, team, tasks, schedule, insights.`);
         setTab(name);
         return ok({ tab: name });
+      },
+    },
+
+    {
+      name: "summarize_schedule",
+      description:
+        "Return the auto-generated weekly schedule: every placed time block per task, total scheduled hours per member, and any conflicts (tasks that didn't fit before their deadline). The scheduler reads each task's assignment, due date, and the assigned member's availability + energy/concentration curve.",
+      permission: false,
+      parameters: { type: "object", properties: {} },
+      execute: async () => {
+        const state = getState();
+        const { assignments } = getDerived();
+        const schedule = computeSchedule(state, assignments, new Date());
+        const totals = hoursPerMember(schedule);
+        const blocks = [];
+        for (const [taskId, bs] of Object.entries(schedule.placements)) {
+          const t = state.tasks.find((x) => x.id === taskId);
+          if (!t) continue;
+          for (const b of bs) {
+            const member = state.members.find((m) => m.id === b.memberId);
+            blocks.push({
+              task: t.title,
+              member: member?.name ?? null,
+              from: b.from,
+              to: b.to,
+              bucket: b.bucket,
+              score: b.score,
+            });
+          }
+        }
+        return ok({
+          weekStart: schedule.weekStart.toISOString(),
+          weekEnd: schedule.weekEnd.toISOString(),
+          totals: Object.entries(totals).map(([memberId, hours]) => ({
+            member: state.members.find((m) => m.id === memberId)?.name ?? memberId,
+            hours,
+          })),
+          blocks,
+          conflicts: schedule.conflicts,
+        });
       },
     },
 

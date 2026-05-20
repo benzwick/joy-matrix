@@ -2,12 +2,14 @@ import React, { useState, useEffect, useMemo, useContext, createContext } from "
 import {
   Plus, X, Sparkles, AlertTriangle, Trash2, RefreshCw,
   Zap, Heart, Brain, Battery, ArrowRight, Target, Users, ListTodo, Grid3x3, Activity,
-  Sun, Moon, Palette, RotateCcw, Download, Upload, Github, Linkedin, Instagram
+  Sun, Moon, Palette, RotateCcw, Download, Upload, Github, Linkedin, Instagram,
+  Calendar
 } from "lucide-react";
 import JoyMatrixChat from "./talk2view/JoyMatrixChat";
 import { FUZZY_VALUES, FUZZY_LABELS, formatDueDate, isOverdue } from "./scheduling/dueDate";
 import { DAYS, DAY_LABELS, WEEKDAYS, weekdayNineToFive, normaliseRanges } from "./scheduling/availability";
 import { DAYTIMES, DAYTIME_LABELS, SCORE_LABELS, defaultWindows } from "./scheduling/windows";
+import { computeSchedule, hoursPerMember } from "./scheduling/schedule";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types of intent
@@ -1042,6 +1044,7 @@ function AppInner() {
             ["matrix",  "Matrix",  Grid3x3],
             ["team",    "Team",    Users],
             ["tasks",   "Tasks",   ListTodo],
+            ["schedule","Schedule",Calendar],
             ["insights","Insights",Activity],
           ].map(([key, label, Icon]) => (
             <button key={key} onClick={() => setTab(key)} style={{
@@ -1059,6 +1062,7 @@ function AppInner() {
         {tab === "matrix"   && <MatrixView state={state} assignments={assignments} onEditTask={(t) => { setTab("tasks"); setEditingTask(t.id); }} />}
         {tab === "team"     && <TeamView state={state} update={update} addMember={addMember} removeMember={removeMember} summary={summary} />}
         {tab === "tasks"    && <TasksView state={state} update={update} addTask={addTask} removeTask={removeTask} editing={editingTask} setEditing={setEditingTask} assignments={assignments} setTaskCategory={setTaskCategory} />}
+        {tab === "schedule" && <ScheduleView state={state} assignments={assignments} />}
         {tab === "insights" && <InsightsView state={state} summary={summary} assignments={assignments} />}
       </main>
 
@@ -1814,6 +1818,165 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                   )}
                 </div>
               )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Schedule View
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ScheduleView({ state, assignments }) {
+  const isPhone = useViewportWidth() < 480;
+  // Memoise on the state inputs so the algorithm doesn't re-run on
+  // unrelated re-renders (theme changes, hover, etc.).
+  const schedule = useMemo(
+    () => computeSchedule(state, assignments, new Date()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.tasks, state.members, assignments]
+  );
+  const totals = hoursPerMember(schedule);
+
+  // Members who have anything scheduled this week (skip empty lanes).
+  const scheduledMemberIds = new Set();
+  for (const blocks of Object.values(schedule.placements)) {
+    for (const b of blocks) scheduledMemberIds.add(b.memberId);
+  }
+  const swimLanes = state.members.filter(m => scheduledMemberIds.has(m.id));
+
+  // Day columns: 7 days starting from today.
+  const dayCols = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(schedule.weekStart.getTime() + i * 24 * 60 * 60 * 1000);
+    dayCols.push(d);
+  }
+  const dayLabel = (d) => d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+
+  // Index placements by member + day for fast lookup.
+  const placementsByMemberDay = {};
+  for (const [taskId, blocks] of Object.entries(schedule.placements)) {
+    for (const b of blocks) {
+      const from = new Date(b.from);
+      const key = `${b.memberId}|${from.getFullYear()}-${from.getMonth()}-${from.getDate()}`;
+      if (!placementsByMemberDay[key]) placementsByMemberDay[key] = [];
+      placementsByMemberDay[key].push({ ...b, taskId });
+    }
+  }
+
+  return (
+    <div>
+      <SectionHead
+        eyebrow="04"
+        title="The Schedule"
+        sub="Tasks placed into real time, matched to each person's availability and energy curve."
+      />
+
+      {schedule.conflicts.length > 0 && (
+        <div style={{
+          marginTop: 16, padding: 12, borderRadius: 10,
+          background: "rgba(184,73,42,0.08)", border: "1px solid rgba(184,73,42,0.3)",
+          color: colors.rustDeep,
+        }}>
+          <div style={{ ...mutedLabel, color: colors.rustDeep, marginBottom: 6 }}>
+            CONFLICTS · {schedule.conflicts.length}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+            {schedule.conflicts.map((c) => (
+              <div key={c.taskId}>
+                <strong>{c.title}</strong> — {c.reason}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {swimLanes.length === 0 && schedule.conflicts.length === 0 && (
+        <Empty>
+          Nothing scheduled. Tasks need an assigned member, a due date, and
+          availability windows within the next 7 days.
+        </Empty>
+      )}
+
+      {swimLanes.length > 0 && (
+        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+          {swimLanes.map((m) => (
+            <ScheduleLane
+              key={m.id}
+              member={m}
+              dayCols={dayCols}
+              placementsByMemberDay={placementsByMemberDay}
+              tasks={state.tasks}
+              totalHours={totals[m.id] || 0}
+              isPhone={isPhone}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScheduleLane({ member, dayCols, placementsByMemberDay, tasks, totalHours, isPhone }) {
+  const tonesByQuadrant = {
+    DO: { fg: colors.rustDeep, bg: "rgba(184,73,42,0.10)" },
+    SCHEDULE: { fg: colors.teal, bg: "rgba(42,93,93,0.10)" },
+    DELEGATE: { fg: colors.ochre, bg: "rgba(201,138,44,0.12)" },
+    ELIMINATE: { fg: colors.inkSoft, bg: "rgba(28,25,22,0.06)" },
+  };
+  return (
+    <div style={{ ...card, padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }}>{member.name}</div>
+        <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, color: colors.inkSoft }}>
+          {totalHours.toFixed(1)}h scheduled
+        </div>
+      </div>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: isPhone ? "repeat(7, minmax(60px, 1fr))" : "repeat(7, 1fr)",
+        gap: 6,
+        overflowX: "auto",
+      }}>
+        {dayCols.map((day, idx) => {
+          const key = `${member.id}|${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
+          const blocks = (placementsByMemberDay[key] || []).sort(
+            (a, b) => new Date(a.from).getTime() - new Date(b.from).getTime()
+          );
+          return (
+            <div key={idx} style={{
+              minHeight: 110, padding: 6, borderRadius: 8,
+              background: "rgba(28,25,22,0.025)", border: `1px dashed ${colors.rule}`,
+              display: "flex", flexDirection: "column", gap: 4,
+            }}>
+              <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, color: colors.inkSoft, letterSpacing: "0.04em" }}>
+                {day.toLocaleDateString(undefined, { weekday: "short" }).toUpperCase()} {day.getDate()}
+              </div>
+              {blocks.length === 0 && (
+                <div style={{ fontStyle: "italic", color: colors.inkSoft, fontSize: 10 }}>—</div>
+              )}
+              {blocks.map((b, i) => {
+                const t = tasks.find(x => x.id === b.taskId);
+                if (!t) return null;
+                const tone = tonesByQuadrant[quadrantOf(t)] || tonesByQuadrant.ELIMINATE;
+                const from = new Date(b.from);
+                const to = new Date(b.to);
+                return (
+                  <div key={i} title={`${t.title} · score ${b.score}`} style={{
+                    padding: "4px 6px", borderRadius: 6,
+                    background: tone.bg, borderLeft: `3px solid ${tone.fg}`,
+                    fontSize: 11, lineHeight: 1.25, color: colors.ink,
+                  }}>
+                    <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, color: tone.fg, fontWeight: 600 }}>
+                      {String(from.getHours()).padStart(2, "0")}:{String(from.getMinutes()).padStart(2, "0")}–{String(to.getHours()).padStart(2, "0")}:{String(to.getMinutes()).padStart(2, "0")}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 500 }}>{t.title}</div>
+                  </div>
+                );
+              })}
             </div>
           );
         })}
