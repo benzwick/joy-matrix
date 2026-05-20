@@ -14,6 +14,7 @@
 
 import { PRESETS, buildExportEnvelope, quadrantOf } from "../App";
 import { clamp, findCategory, findMember, findStakeholder, findTask } from "./lookup";
+import { parseDueDateInput, formatDueDate, FUZZY_VALUES } from "../scheduling/dueDate";
 
 const VALID_TABS = new Set(["matrix", "team", "tasks", "insights"]);
 const VALID_MODES = new Set(["light", "dark"]);
@@ -49,6 +50,7 @@ function projectTask(t, state, assignments) {
     urgency: t.urgency,
     importance: t.importance,
     effort: t.effort,
+    dueDate: t.dueDate ? { kind: t.dueDate.kind, value: t.dueDate.value, display: formatDueDate(t.dueDate) } : null,
     category,
     stakeholder,
     assignee,
@@ -382,6 +384,38 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
           return s;
         });
         return ok({ removed });
+      },
+    },
+
+    {
+      name: "set_task_due_date",
+      description:
+        "Set or clear a task's due date. Accepts fuzzy labels (now, today, this-morning, this-afternoon, this-evening, tomorrow, this-week, soon, later, whenever, never) or an ISO 8601 datetime like 2026-06-15T14:00. Pass 'none' or null to clear.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          task_title: { type: "string" },
+          due_date: {
+            type: ["string", "null"],
+            description: `One of: ${FUZZY_VALUES.join(", ")}; an ISO datetime; "none" to clear.`,
+          },
+        },
+        required: ["task_title"],
+      },
+      execute: async (args) => {
+        const hit = findTask(getState(), args.task_title);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const parsed = parseDueDateInput(args.due_date);
+        if (!parsed.ok) return err(parsed.error);
+        const id = hit.item.id;
+        update((s) => {
+          const t = s.tasks.find((x) => x.id === id);
+          if (t) t.dueDate = parsed.dueDate;
+          return s;
+        });
+        const after = getState().tasks.find((t) => t.id === id);
+        return ok({ title: after.title, due_date: after.dueDate, display: formatDueDate(after.dueDate) });
       },
     },
 

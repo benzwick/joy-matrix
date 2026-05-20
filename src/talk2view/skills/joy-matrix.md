@@ -126,6 +126,25 @@ weight.
 
 ---
 
+## Due dates
+
+Optional per task. Two forms:
+
+- **Fuzzy labels**, evaluated relative to the user's local clock:
+  `now`, `today`, `this-morning`, `this-afternoon`, `this-evening`,
+  `tomorrow`, `this-week`, `soon` (3-day window), `later` (14-day
+  window), `whenever` (no deadline, lowest priority), `never` (excluded
+  from scheduling).
+- **Exact** — an ISO 8601 datetime.
+
+Displayed as a small pill on the task chip (matrix grid) and the task
+card (tasks list). Pill turns warn-coloured (rust) when overdue.
+
+Use the `set_task_due_date` tool to set or clear. The tool accepts
+either form: `"this-friday"` and `"2026-06-15T14:00"` both work.
+
+---
+
 ## The four tabs
 
 - **Matrix** — the four-quadrant grid with task chips and assignees.

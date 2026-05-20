@@ -5,6 +5,7 @@ import {
   Sun, Moon, Palette, RotateCcw, Download, Upload, Github, Linkedin, Instagram
 } from "lucide-react";
 import JoyMatrixChat from "./talk2view/JoyMatrixChat";
+import { FUZZY_VALUES, FUZZY_LABELS, formatDueDate, isOverdue } from "./scheduling/dueDate";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types of intent
@@ -18,7 +19,7 @@ import JoyMatrixChat from "./talk2view/JoyMatrixChat";
 
 const STORAGE_KEY = "joy-matrix-state-v1";
 const THEME_STORAGE_KEY = "joy-matrix-theme-v1";
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const DEMO_STATE = {
   schemaVersion: SCHEMA_VERSION,
@@ -70,6 +71,7 @@ const DEMO_STATE = {
     {
       id: "t1", title: "Ship landing page redesign", categoryId: "c-des", stakeholderId: "s-users",
       urgency: 4, importance: 4, effort: 2,
+      dueDate: { kind: "fuzzy", value: "this-week" },
       scores: {
         m1: { pleasure: 3, talent: 3 },
         m2: { pleasure: 0, talent: 1 },
@@ -79,6 +81,7 @@ const DEMO_STATE = {
     {
       id: "t2", title: "Set up Stripe + billing flows", categoryId: "c-eng", stakeholderId: "s-founder",
       urgency: 3, importance: 5, effort: 4,
+      dueDate: { kind: "fuzzy", value: "soon" },
       scores: {
         m1: { pleasure: -2, talent: 0 },
         m2: { pleasure: 1, talent: 3 },
@@ -88,6 +91,7 @@ const DEMO_STATE = {
     {
       id: "t3", title: "Write & schedule launch tweet thread", categoryId: "c-mkt", stakeholderId: "s-users",
       urgency: 5, importance: 2, effort: 1,
+      dueDate: { kind: "fuzzy", value: "this-afternoon" },
       scores: {
         m1: { pleasure: 1, talent: 2 },
         m2: { pleasure: -1, talent: 0 },
@@ -97,6 +101,7 @@ const DEMO_STATE = {
     {
       id: "t4", title: "Refactor auth (tech debt)", categoryId: "c-eng", stakeholderId: "s-team",
       urgency: 1, importance: 4, effort: 4,
+      dueDate: { kind: "fuzzy", value: "later" },
       scores: {
         m1: { pleasure: -2, talent: -1 },
         m2: { pleasure: 2, talent: 3 },
@@ -106,6 +111,7 @@ const DEMO_STATE = {
     {
       id: "t5", title: "Update outdated help docs", categoryId: "c-ops",
       urgency: 1, importance: 1, effort: 2,
+      dueDate: { kind: "fuzzy", value: "whenever" },
       scores: {
         m1: { pleasure: -1, talent: 1 },
         m2: { pleasure: -2, talent: 0 },
@@ -115,6 +121,7 @@ const DEMO_STATE = {
     {
       id: "t6", title: "Run 5 user research interviews", categoryId: "c-des", stakeholderId: "s-users",
       urgency: 2, importance: 5, effort: 3,
+      dueDate: { kind: "fuzzy", value: "this-week" },
       scores: {
         m1: { pleasure: 2, talent: 2 },
         m2: { pleasure: -2, talent: 0 },
@@ -826,7 +833,7 @@ function AppInner() {
       // New tasks start with autoFilled=true so the first category pick
       // can seed scores from each member's baseline.
       s.members.forEach(m => { scores[m.id] = { pleasure: 0, talent: 0, autoFilled: true }; });
-      s.tasks.push({ id, title, categoryId: null, stakeholderId: null, urgency: 3, importance: 3, effort: 2, scores });
+      s.tasks.push({ id, title, categoryId: null, stakeholderId: null, urgency: 3, importance: 3, effort: 2, dueDate: null, scores });
       return s;
     });
   };
@@ -1193,6 +1200,9 @@ function MatrixView({ state, assignments, onEditTask }) {
                             <AlertTriangle size={10} /> risk
                           </span>
                         )}
+                        {t.dueDate && (
+                          <DueDateChip dueDate={t.dueDate} />
+                        )}
                         <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, color: colors.inkSoft, marginLeft: "auto" }}>
                           U{t.urgency} I{t.importance} E{t.effort}
                         </span>
@@ -1461,6 +1471,7 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                     <Pill tone={q === "DO" ? "rust" : q === "SCHEDULE" ? "teal" : "ink"}>{q}</Pill>
                     {assignee && <Pill tone="ink">→ {assignee.name}</Pill>}
                     {a?.burnoutRisk && <Pill tone="warn"><AlertTriangle size={9} style={{ display: "inline", verticalAlign: "middle" }} /> risk</Pill>}
+                    {t.dueDate && <DueDatePill dueDate={t.dueDate} />}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
@@ -1530,6 +1541,10 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                       )}
                     </div>
                   )}
+                  <DueDatePicker
+                    value={t.dueDate}
+                    onChange={(next) => update(st => { st.tasks.find(x => x.id === t.id).dueDate = next; return st; })}
+                  />
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
                     <Slider value={t.urgency} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).urgency = v; return st; })} min={1} max={5} color={colors.rustDeep} label="urgency" />
                     <Slider value={t.importance} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).importance = v; return st; })} min={1} max={5} color={colors.teal} label="importance" />
@@ -1879,6 +1894,104 @@ function StakeholdersBar({ state, update }) {
         </span>
       ))}
       <button onClick={add} style={{ ...btnGhost, padding: "4px 10px" }}><Plus size={11}/> add stakeholder</button>
+    </div>
+  );
+}
+
+// Compact due-date chip for the matrix grid (tiny mono style matching
+// the U/I/E badge at the right edge of each task chip).
+function DueDateChip({ dueDate }) {
+  const label = formatDueDate(dueDate);
+  if (!label) return null;
+  const overdue = isOverdue(dueDate);
+  return (
+    <span
+      title={`Due: ${label}`}
+      style={{
+        fontFamily: "var(--joy-font-mono)", fontSize: 9, letterSpacing: "0.04em",
+        color: overdue ? colors.rustDeep : colors.teal, fontWeight: 600,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+// Pill variant for the tasks-list cards (uses the existing Pill component
+// for visual consistency with the assignee / quadrant pills).
+function DueDatePill({ dueDate }) {
+  const label = formatDueDate(dueDate);
+  if (!label) return null;
+  const overdue = isOverdue(dueDate);
+  return <Pill tone={overdue ? "warn" : "teal"}>{label}</Pill>;
+}
+
+// Editor for a task's due date. Switches between a fuzzy-label select
+// and a native datetime input. "Clear" sets the field back to null.
+function DueDatePicker({ value, onChange }) {
+  const mode = value?.kind ?? "none";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <span style={mutedLabel}>DUE</span>
+      <div style={{ display: "flex", gap: 4 }}>
+        {[
+          ["none", "none"],
+          ["fuzzy", "fuzzy"],
+          ["exact", "exact"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => {
+              if (key === "none") onChange(null);
+              else if (key === "fuzzy") onChange({ kind: "fuzzy", value: value?.kind === "fuzzy" ? value.value : "today" });
+              else onChange({ kind: "exact", value: value?.kind === "exact" ? value.value : new Date().toISOString() });
+            }}
+            style={{
+              ...btnGhost,
+              padding: "4px 10px", fontSize: 10,
+              ...(mode === key ? { background: colors.teal, color: "#ffffff", borderColor: colors.teal } : {}),
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {mode === "fuzzy" && (
+        <select
+          value={value.value}
+          onChange={(e) => onChange({ kind: "fuzzy", value: e.target.value })}
+          style={{
+            padding: "5px 10px", borderRadius: 8,
+            background: colors.paper, color: colors.ink,
+            border: `1px solid ${colors.rule}`,
+            fontFamily: "var(--joy-font-body)", fontSize: 13, cursor: "pointer",
+          }}
+        >
+          {FUZZY_VALUES.map(fv => <option key={fv} value={fv}>{FUZZY_LABELS[fv]}</option>)}
+        </select>
+      )}
+      {mode === "exact" && (
+        <input
+          type="datetime-local"
+          value={(() => {
+            // datetime-local wants "YYYY-MM-DDTHH:mm" without timezone
+            const d = new Date(value.value);
+            if (Number.isNaN(d.getTime())) return "";
+            const pad = (n) => String(n).padStart(2, "0");
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+          })()}
+          onChange={(e) => {
+            const d = new Date(e.target.value);
+            if (!Number.isNaN(d.getTime())) onChange({ kind: "exact", value: d.toISOString() });
+          }}
+          style={{
+            padding: "5px 10px", borderRadius: 8,
+            background: colors.paper, color: colors.ink,
+            border: `1px solid ${colors.rule}`,
+            fontFamily: "var(--joy-font-body)", fontSize: 13,
+          }}
+        />
+      )}
     </div>
   );
 }
