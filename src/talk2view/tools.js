@@ -16,6 +16,7 @@ import { PRESETS, buildExportEnvelope, quadrantOf } from "../App";
 import { clamp, findCategory, findMember, findStakeholder, findTask } from "./lookup";
 import { parseDueDateInput, formatDueDate, FUZZY_VALUES } from "../scheduling/dueDate";
 import { parseRangesInput, DAYS, normaliseRanges, weekdayNineToFive } from "../scheduling/availability";
+import { DAYTIMES, defaultWindows } from "../scheduling/windows";
 
 const VALID_TABS = new Set(["matrix", "team", "tasks", "insights"]);
 const VALID_MODES = new Set(["light", "dark"]);
@@ -38,6 +39,7 @@ function projectMember(m, summary) {
     burnout: !!(s && s.burnout),
     strain: !!(s && s.strain),
     availability: m.availability || null,
+    windows: m.windows || null,
   };
 }
 
@@ -303,6 +305,47 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
           return s;
         });
         return ok({ name: hit.item.name, capacity: newCap });
+      },
+    },
+
+    {
+      name: "set_energy_window",
+      description:
+        "Set a member's energy and/or concentration level for one time-of-day bucket (morning, midday, afternoon, evening). Each level is 1 (low), 2 (med), or 3 (high). Used by the scheduler to match task effort with energy and task difficulty with concentration. Either field is optional — pass only what's changing.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          member_name: { type: "string" },
+          time_of_day: { type: "string", description: `One of: ${DAYTIMES.join(", ")}.` },
+          energy: { type: "integer", minimum: 1, maximum: 3 },
+          concentration: { type: "integer", minimum: 1, maximum: 3 },
+        },
+        required: ["member_name", "time_of_day"],
+      },
+      execute: async (args) => {
+        const hit = findMember(getState(), args.member_name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        if (!DAYTIMES.includes(args.time_of_day)) {
+          return err(`time_of_day must be one of: ${DAYTIMES.join(", ")}.`);
+        }
+        if (args.energy === undefined && args.concentration === undefined) {
+          return err("Provide energy and/or concentration.");
+        }
+        const id = hit.item.id;
+        update((s) => {
+          const m = s.members.find((x) => x.id === id);
+          if (!m) return s;
+          m.windows = m.windows || defaultWindows();
+          const cur = m.windows[args.time_of_day] || { energy: 2, concentration: 2 };
+          m.windows[args.time_of_day] = {
+            energy: args.energy !== undefined ? clamp(args.energy, 1, 3) : cur.energy,
+            concentration: args.concentration !== undefined ? clamp(args.concentration, 1, 3) : cur.concentration,
+          };
+          return s;
+        });
+        const after = getState().members.find(m => m.id === id);
+        return ok({ name: hit.item.name, time_of_day: args.time_of_day, window: after.windows[args.time_of_day] });
       },
     },
 

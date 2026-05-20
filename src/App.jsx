@@ -7,6 +7,7 @@ import {
 import JoyMatrixChat from "./talk2view/JoyMatrixChat";
 import { FUZZY_VALUES, FUZZY_LABELS, formatDueDate, isOverdue } from "./scheduling/dueDate";
 import { DAYS, DAY_LABELS, WEEKDAYS, weekdayNineToFive, normaliseRanges } from "./scheduling/availability";
+import { DAYTIMES, DAYTIME_LABELS, SCORE_LABELS, defaultWindows } from "./scheduling/windows";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types of intent
@@ -51,6 +52,12 @@ const DEMO_STATE = {
         sat: [],
         sun: [],
       },
+      windows: {
+        morning:   { energy: 3, concentration: 3 },
+        midday:    { energy: 2, concentration: 2 },
+        afternoon: { energy: 1, concentration: 1 },
+        evening:   { energy: 1, concentration: 2 },
+      },
       categoryScores: {
         "c-eng": { pleasure: 1,  talent: 2  },
         "c-des": { pleasure: 3,  talent: 3  },
@@ -69,6 +76,12 @@ const DEMO_STATE = {
         sat: [],
         sun: [],
       },
+      windows: {
+        morning:   { energy: 1, concentration: 2 },
+        midday:    { energy: 2, concentration: 3 },
+        afternoon: { energy: 3, concentration: 3 },
+        evening:   { energy: 2, concentration: 2 },
+      },
       categoryScores: {
         "c-eng": { pleasure: 3,  talent: 3  },
         "c-des": { pleasure: 1,  talent: 0  },
@@ -86,6 +99,12 @@ const DEMO_STATE = {
         fri: [{ from: "08:00", to: "12:00" }],
         sat: [{ from: "10:00", to: "13:00" }],
         sun: [],
+      },
+      windows: {
+        morning:   { energy: 3, concentration: 2 },
+        midday:    { energy: 2, concentration: 2 },
+        afternoon: { energy: 1, concentration: 1 },
+        evening:   { energy: 1, concentration: 1 },
       },
       categoryScores: {
         "c-eng": { pleasure: -1, talent: -2 },
@@ -837,7 +856,7 @@ function AppInner() {
     if (!name) return;
     update(s => {
       const id = "m" + Date.now();
-      s.members.push({ id, name, capacity: 0, categoryScores: {}, availability: weekdayNineToFive() });
+      s.members.push({ id, name, capacity: 0, categoryScores: {}, availability: weekdayNineToFive(), windows: defaultWindows() });
       // initialize empty scores in each task
       s.tasks.forEach(t => { t.scores[id] = { pleasure: 0, talent: 0 }; });
       return s;
@@ -1357,6 +1376,8 @@ function TeamView({ state, update, addMember, removeMember, summary }) {
 
               <MemberAvailability member={m} update={update} />
 
+              <MemberWindows member={m} update={update} />
+
               {s && (
                 <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px dashed ${colors.rule}` }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -1547,6 +1568,76 @@ function MemberAvailability({ member, update }) {
                 >
                   + range
                 </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Per-time-of-day energy + concentration sliders. Collapsed by default;
+// when open shows 4 rows (morning / midday / afternoon / evening), each
+// with two 1–3 sliders. The scheduler uses these to match task effort
+// and difficulty against the right time of day.
+function MemberWindows({ member, update }) {
+  const [open, setOpen] = useState(false);
+  const windows = member.windows || defaultWindows();
+
+  const setBucket = (bucket, field, value) => update(st => {
+    const m = st.members.find(x => x.id === member.id);
+    m.windows = m.windows || defaultWindows();
+    m.windows[bucket] = { ...m.windows[bucket], [field]: value };
+    return st;
+  });
+
+  // Sum tells the user "how skewed is this curve" — non-neutral if any
+  // bucket score differs from 2.
+  const nonNeutral = DAYTIMES.some(t => {
+    const w = windows[t] || { energy: 2, concentration: 2 };
+    return w.energy !== 2 || w.concentration !== 2;
+  });
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: "transparent", border: "none", padding: 0, cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 6, width: "100%",
+          fontFamily: "var(--joy-font-mono)", fontSize: 10, letterSpacing: "0.12em",
+          textTransform: "uppercase", color: colors.inkSoft,
+        }}
+        aria-expanded={open}
+      >
+        <span>ENERGY · CONCENTRATION {nonNeutral && "· tuned"}</span>
+        <span style={{ marginLeft: "auto", fontSize: 14 }}>{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          {DAYTIMES.map(bucket => {
+            const w = windows[bucket] || { energy: 2, concentration: 2 };
+            return (
+              <div key={bucket} style={{
+                display: "grid", gridTemplateColumns: "minmax(70px, 80px) 1fr 1fr", gap: 8, alignItems: "center",
+                padding: "6px 8px", background: "rgba(28,25,22,0.025)", borderRadius: 6,
+              }}>
+                <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  {DAYTIME_LABELS[bucket]}
+                </div>
+                <Slider
+                  value={w.energy}
+                  onChange={(v) => setBucket(bucket, "energy", v)}
+                  min={1} max={3} color={colors.rust}
+                  label={<span><Zap size={9} style={{display:"inline"}}/> {SCORE_LABELS[w.energy]}</span>}
+                />
+                <Slider
+                  value={w.concentration}
+                  onChange={(v) => setBucket(bucket, "concentration", v)}
+                  min={1} max={3} color={colors.teal}
+                  label={<span><Brain size={9} style={{display:"inline"}}/> {SCORE_LABELS[w.concentration]}</span>}
+                />
               </div>
             );
           })}

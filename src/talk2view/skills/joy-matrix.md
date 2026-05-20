@@ -152,6 +152,39 @@ places work outside a member's available windows.
 
 ---
 
+## Energy and concentration windows
+
+Each member also carries a day-agnostic energy + concentration curve
+over the day, split into four buckets:
+
+```
+windows: {
+  morning:   { energy: 1-3, concentration: 1-3 },
+  midday:    { ... },
+  afternoon: { ... },
+  evening:   { ... },
+}
+```
+
+Each score is 1 (low), 2 (med), or 3 (high). Defaults are 2/2 — neutral.
+
+Time-of-day boundaries:
+
+- morning: 06:00–12:00
+- midday: 12:00–14:00
+- afternoon: 14:00–18:00
+- evening: 18:00–22:00
+
+The scheduler reads these to match work with the right window: high
+**effort** tasks land in high-**energy** slots; high **difficulty**
+tasks land in high-**concentration** slots. Pleasure / talent still
+decide *who* the task goes to; energy / concentration decide *when*.
+
+Use `set_energy_window({ member_name, time_of_day, energy?, concentration? })`
+to edit. Either field is optional — pass only what's changing.
+
+---
+
 ## Due dates
 
 Optional per task. Two forms:
