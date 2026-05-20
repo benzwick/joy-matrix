@@ -126,20 +126,157 @@ weight.
 
 ---
 
-## The four tabs
+## Availability
+
+Each member has a per-day-of-week availability map:
+
+```
+availability: { mon: [{from: "09:00", to: "17:00"}], tue: [...], ... }
+```
+
+Keys are `mon..sun`, values are arrays of `{from, to}` HH:MM windows.
+Empty array = unavailable that day. A day key missing entirely is also
+treated as unavailable. Multiple ranges per day are allowed (e.g.
+morning + afternoon with a lunch break in between).
+
+Use the `set_member_availability` tool to edit. It accepts:
+
+- Array of `{from, to}` objects.
+- String shorthand: `"all_day"`, `"unavailable"`, or
+  `"09:00-12:00, 14:00-18:00"`.
+- The special value `"weekdays_9_5"` resets the whole week to
+  Mon–Fri 09:00–17:00 in one call (day parameter ignored).
+
+Availability is read by the scheduler in the Schedule tab — it never
+places work outside a member's available windows.
+
+---
+
+## Difficulty (per-task, per-member)
+
+Each entry in `tasks[].scores[memberId]` carries an optional
+`difficulty` score on the 1–5 scale (1 = mindless busywork, 3 = normal,
+5 = needs deep focus). Stored alongside the existing `pleasure` and
+`talent` for that (task, member) pair. Defaults to 3 when unset.
+
+Crucially, difficulty is **per-member** — the same task can be deep
+work for one person and trivial for another. "Refactor auth" might be
+a 5 for someone new to the codebase and a 2 for someone who wrote it.
+
+The scheduler matches a task's difficulty (for its assigned member)
+against the **concentration** dimension of that member's daytime
+windows. High-difficulty tasks land in high-concentration slots.
+
+Set via `set_task_difficulty({ task_title, member_name, difficulty })`
+or `set_task_score` (which now also accepts `difficulty`).
+
+---
+
+## Energy and concentration windows
+
+Each member also carries a day-agnostic energy + concentration curve
+over the day, split into four buckets:
+
+```
+windows: {
+  morning:   { energy: 1-3, concentration: 1-3 },
+  midday:    { ... },
+  afternoon: { ... },
+  evening:   { ... },
+}
+```
+
+Each score is 1 (low), 2 (med), or 3 (high). Defaults are 2/2 — neutral.
+
+Time-of-day boundaries:
+
+- morning: 06:00–12:00
+- midday: 12:00–14:00
+- afternoon: 14:00–18:00
+- evening: 18:00–22:00
+
+The scheduler reads these to match work with the right window: high
+**effort** tasks land in high-**energy** slots; high **difficulty**
+tasks land in high-**concentration** slots. Pleasure / talent still
+decide *who* the task goes to; energy / concentration decide *when*.
+
+Use `set_energy_window({ member_name, time_of_day, energy?, concentration? })`
+to edit. Either field is optional — pass only what's changing.
+
+---
+
+## Due dates
+
+Optional per task. Two forms:
+
+- **Fuzzy labels**, evaluated relative to the user's local clock:
+  `now`, `today`, `this-morning`, `this-afternoon`, `this-evening`,
+  `tomorrow`, `this-week`, `soon` (3-day window), `later` (14-day
+  window), `whenever` (no deadline, lowest priority), `never` (excluded
+  from scheduling).
+- **Exact** — an ISO 8601 datetime.
+
+Displayed as a small pill on the task chip (matrix grid) and the task
+card (tasks list). Pill turns warn-coloured (rust) when overdue.
+
+Use the `set_task_due_date` tool to set or clear. The tool accepts
+either form: `"this-friday"` and `"2026-06-15T14:00"` both work.
+
+---
+
+## The Schedule tab and auto-scheduler
+
+The Schedule tab (between Tasks and Insights) takes each task's
+assignment, due date, and the assigned member's availability +
+energy/concentration curve, and places work into real 30-minute time
+blocks on a rolling 7-day calendar.
+
+Algorithm (informal):
+
+1. Tasks with due dates land first, earliest deadline first. Tasks
+   with no deadline (or `whenever`) fill remaining capacity. `never`
+   tasks are excluded.
+2. Each task needs `effort × 1.5` hours, packed at 30-min granularity
+   (effort 1 → 3 slots, effort 5 → 15 slots).
+3. For each task, every free 30-min slot inside the assigned member's
+   availability before the deadline gets a score combining four
+   things:
+   - `−|effort − slot.energy|` (high effort wants high energy)
+   - `−|difficulty − slot.concentration|` (deep work wants peak focus)
+   - `+ pleasure × 0.5` (mild bonus where work is enjoyable)
+   - `+ talent × 0.3` (mild bonus where it's a strong fit)
+4. The top-N highest-scoring slots are picked and marked occupied.
+5. Tasks that don't fit before their deadline surface in a
+   "conflicts" strip with a reason.
+
+The tab has four view modes (Day / Week / Month / Year) sharing the
+same placement data; only the projection changes.
+
+The `summarize_schedule` tool returns this week's placements,
+per-member hour totals, and any conflicts in JSON for the chat to
+quote from.
+
+---
+
+## The five tabs
 
 - **Matrix** — the four-quadrant grid with task chips and assignees.
   Click a task chip to jump to its editor.
 - **Team** — one card per member: capacity slider, expandable category
-  baselines, and per-member rollup stats (tasks, load, joy, talent fit,
+  baselines, availability windows, energy + concentration curve,
+  per-member rollup stats (tasks, load, joy, talent fit,
   burnout/strain warnings).
 - **Tasks** — categories + stakeholders bars at top, then the task
   list. Each task is editable inline (title, U/I/E sliders, category,
-  stakeholder, per-member pleasure/talent grid).
+  stakeholder, due date picker, per-member pleasure/talent/difficulty
+  grid).
+- **Schedule** — auto-placement weekly calendar in four views
+  (Day / Week / Month / Year). See the section above.
 - **Insights** — global stats (total joy, total talent fit, burnout
   count, strain count), per-person joy×load bars, a "pain points" list
   (assignments where the chosen person has pleasure ≤ −2 or talent ≤ −2),
-  and a written "read" of whether the configuration is healthy or grinding.
+  a per-person scheduled / idle / over-budget breakdown, and a written
+  "read" of whether the configuration is healthy or grinding.
 
 ---
 

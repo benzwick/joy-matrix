@@ -14,8 +14,12 @@
 
 import { PRESETS, buildExportEnvelope, quadrantOf } from "../App";
 import { clamp, findCategory, findMember, findStakeholder, findTask } from "./lookup";
+import { parseDueDateInput, formatDueDate, FUZZY_VALUES } from "../scheduling/dueDate";
+import { parseRangesInput, DAYS, normaliseRanges, weekdayNineToFive } from "../scheduling/availability";
+import { DAYTIMES, defaultWindows } from "../scheduling/windows";
+import { computeSchedule, hoursPerMember } from "../scheduling/schedule";
 
-const VALID_TABS = new Set(["matrix", "team", "tasks", "insights"]);
+const VALID_TABS = new Set(["matrix", "team", "tasks", "schedule", "insights"]);
 const VALID_MODES = new Set(["light", "dark"]);
 
 function ok(extra = {}) { return JSON.stringify({ ok: true, ...extra }); }
@@ -35,6 +39,8 @@ function projectMember(m, summary) {
     talentFit: s ? s.talentIndex : 0,
     burnout: !!(s && s.burnout),
     strain: !!(s && s.strain),
+    availability: m.availability || null,
+    windows: m.windows || null,
   };
 }
 
@@ -49,6 +55,7 @@ function projectTask(t, state, assignments) {
     urgency: t.urgency,
     importance: t.importance,
     effort: t.effort,
+    dueDate: t.dueDate ? { kind: t.dueDate.kind, value: t.dueDate.value, display: formatDueDate(t.dueDate) } : null,
     category,
     stakeholder,
     assignee,
@@ -303,6 +310,95 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
     },
 
     {
+      name: "set_energy_window",
+      description:
+        "Set a member's energy and/or concentration level for one time-of-day bucket (morning, midday, afternoon, evening). Each level is 1 (low), 2 (med), or 3 (high). Used by the scheduler to match task effort with energy and task difficulty with concentration. Either field is optional — pass only what's changing.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          member_name: { type: "string" },
+          time_of_day: { type: "string", description: `One of: ${DAYTIMES.join(", ")}.` },
+          energy: { type: "integer", minimum: 1, maximum: 3 },
+          concentration: { type: "integer", minimum: 1, maximum: 3 },
+        },
+        required: ["member_name", "time_of_day"],
+      },
+      execute: async (args) => {
+        const hit = findMember(getState(), args.member_name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        if (!DAYTIMES.includes(args.time_of_day)) {
+          return err(`time_of_day must be one of: ${DAYTIMES.join(", ")}.`);
+        }
+        if (args.energy === undefined && args.concentration === undefined) {
+          return err("Provide energy and/or concentration.");
+        }
+        const id = hit.item.id;
+        update((s) => {
+          const m = s.members.find((x) => x.id === id);
+          if (!m) return s;
+          m.windows = m.windows || defaultWindows();
+          const cur = m.windows[args.time_of_day] || { energy: 2, concentration: 2 };
+          m.windows[args.time_of_day] = {
+            energy: args.energy !== undefined ? clamp(args.energy, 1, 3) : cur.energy,
+            concentration: args.concentration !== undefined ? clamp(args.concentration, 1, 3) : cur.concentration,
+          };
+          return s;
+        });
+        const after = getState().members.find(m => m.id === id);
+        return ok({ name: hit.item.name, time_of_day: args.time_of_day, window: after.windows[args.time_of_day] });
+      },
+    },
+
+    {
+      name: "set_member_availability",
+      description:
+        "Set a member's availability for one day of the week. ranges accepts an array of {from,to} HH:MM windows, OR a string shorthand: \"all_day\", \"unavailable\", or comma-separated ranges like \"09:00-12:00, 14:00-18:00\". The literal \"weekdays_9_5\" fills Mon–Fri 09:00-17:00 and clears the weekend in one shot — in that case the day parameter is ignored.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          member_name: { type: "string" },
+          day: { type: "string", description: `One of: ${DAYS.join(", ")}. Ignored when ranges="weekdays_9_5".` },
+          ranges: {
+            description: "Array of {from,to} or string shorthand (see description).",
+          },
+        },
+        required: ["member_name"],
+      },
+      execute: async (args) => {
+        const hit = findMember(getState(), args.member_name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const id = hit.item.id;
+        if (args.ranges === "weekdays_9_5") {
+          update((s) => {
+            const m = s.members.find((x) => x.id === id);
+            if (m) m.availability = weekdayNineToFive();
+            return s;
+          });
+          return ok({ name: hit.item.name, availability: getState().members.find(m => m.id === id).availability });
+        }
+        if (!args.day || !DAYS.includes(args.day)) {
+          return err(`day must be one of: ${DAYS.join(", ")}.`);
+        }
+        const parsed = parseRangesInput(args.ranges);
+        if (!parsed.ok) return err(parsed.error);
+        update((s) => {
+          const m = s.members.find((x) => x.id === id);
+          if (!m) return s;
+          m.availability = m.availability || {};
+          m.availability[args.day] = normaliseRanges(parsed.ranges);
+          return s;
+        });
+        return ok({
+          name: hit.item.name,
+          day: args.day,
+          ranges: getState().members.find(m => m.id === id).availability[args.day],
+        });
+      },
+    },
+
+    {
       name: "add_task",
       description:
         "Add a new task. Optional: urgency, importance, effort (each 1-5, default 3/3/2), category name, stakeholder name. If a category is supplied, per-member scores auto-fill from that category's baselines.",
@@ -386,6 +482,38 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
     },
 
     {
+      name: "set_task_due_date",
+      description:
+        "Set or clear a task's due date. Accepts fuzzy labels (now, today, this-morning, this-afternoon, this-evening, tomorrow, this-week, soon, later, whenever, never) or an ISO 8601 datetime like 2026-06-15T14:00. Pass 'none' or null to clear.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          task_title: { type: "string" },
+          due_date: {
+            type: ["string", "null"],
+            description: `One of: ${FUZZY_VALUES.join(", ")}; an ISO datetime; "none" to clear.`,
+          },
+        },
+        required: ["task_title"],
+      },
+      execute: async (args) => {
+        const hit = findTask(getState(), args.task_title);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const parsed = parseDueDateInput(args.due_date);
+        if (!parsed.ok) return err(parsed.error);
+        const id = hit.item.id;
+        update((s) => {
+          const t = s.tasks.find((x) => x.id === id);
+          if (t) t.dueDate = parsed.dueDate;
+          return s;
+        });
+        const after = getState().tasks.find((t) => t.id === id);
+        return ok({ title: after.title, due_date: after.dueDate, display: formatDueDate(after.dueDate) });
+      },
+    },
+
+    {
       name: "update_task",
       description: "Update a task's urgency, importance, effort, or title.",
       permission: false,
@@ -465,7 +593,7 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
     {
       name: "set_task_score",
       description:
-        "Set a member's pleasure and/or talent score for one specific task. Locks the score so a later category change won't overwrite it. Use when a user gives task-specific feedback: 'On the auth refactor, Jordan loves it.'",
+        "Set a member's pleasure, talent, and/or difficulty score for one specific task. Locks the score so a later category change won't overwrite it. Use when a user gives task-specific feedback: 'On the auth refactor, Jordan loves it' or 'For Sam this is highly challenging'.",
       permission: false,
       parameters: {
         type: "object",
@@ -474,6 +602,7 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
           member_name: { type: "string" },
           pleasure: { type: "integer", minimum: -3, maximum: 3 },
           talent: { type: "integer", minimum: -3, maximum: 3 },
+          difficulty: { type: "integer", minimum: 1, maximum: 5, description: "1 = mindless, 5 = deep focus required" },
         },
         required: ["task_title", "member_name"],
       },
@@ -488,9 +617,10 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
         update((s) => {
           const t = s.tasks.find((x) => x.id === tId);
           if (!t) return s;
-          const existing = (t.scores || {})[mId] || { pleasure: 0, talent: 0 };
+          const existing = (t.scores || {})[mId] || { pleasure: 0, talent: 0, difficulty: 3 };
           if (args.pleasure !== undefined) existing.pleasure = clamp(args.pleasure, -3, 3);
           if (args.talent !== undefined) existing.talent = clamp(args.talent, -3, 3);
+          if (args.difficulty !== undefined) existing.difficulty = clamp(args.difficulty, 1, 5);
           existing.autoFilled = false;
           t.scores = t.scores || {};
           t.scores[mId] = existing;
@@ -500,8 +630,44 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
         return ok({
           task: th.item.title,
           member: mh.item.name,
-          score: { pleasure: after.pleasure, talent: after.talent, autoFilled: !!after.autoFilled },
+          score: { pleasure: after.pleasure, talent: after.talent, difficulty: after.difficulty ?? 3, autoFilled: !!after.autoFilled },
         });
+      },
+    },
+
+    {
+      name: "set_task_difficulty",
+      description:
+        "Shortcut: set the per-member difficulty (cognitive load) of a task. 1 = mindless, 3 = normal, 5 = needs deep focus. The scheduler matches high-difficulty tasks to high-concentration time windows.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          task_title: { type: "string" },
+          member_name: { type: "string" },
+          difficulty: { type: "integer", minimum: 1, maximum: 5 },
+        },
+        required: ["task_title", "member_name", "difficulty"],
+      },
+      execute: async (args) => {
+        const state = getState();
+        const th = findTask(state, args.task_title);
+        if (th.error) return err(th.error, { candidates: th.candidates });
+        const mh = findMember(state, args.member_name);
+        if (mh.error) return err(mh.error, { candidates: mh.candidates });
+        const tId = th.item.id;
+        const mId = mh.item.id;
+        update((s) => {
+          const t = s.tasks.find((x) => x.id === tId);
+          if (!t) return s;
+          const existing = (t.scores || {})[mId] || { pleasure: 0, talent: 0, difficulty: 3 };
+          existing.difficulty = clamp(args.difficulty, 1, 5);
+          existing.autoFilled = false;
+          t.scores = t.scores || {};
+          t.scores[mId] = existing;
+          return s;
+        });
+        return ok({ task: th.item.title, member: mh.item.name, difficulty: clamp(args.difficulty, 1, 5) });
       },
     },
 
@@ -692,15 +858,55 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
       parameters: {
         type: "object",
         properties: {
-          name: { type: "string", enum: ["matrix", "team", "tasks", "insights"] },
+          name: { type: "string", enum: ["matrix", "team", "tasks", "schedule", "insights"] },
         },
         required: ["name"],
       },
       execute: async (args) => {
         const name = String(args.name || "").toLowerCase();
-        if (!VALID_TABS.has(name)) return err(`Unknown tab "${args.name}". Valid: matrix, team, tasks, insights.`);
+        if (!VALID_TABS.has(name)) return err(`Unknown tab "${args.name}". Valid: matrix, team, tasks, schedule, insights.`);
         setTab(name);
         return ok({ tab: name });
+      },
+    },
+
+    {
+      name: "summarize_schedule",
+      description:
+        "Return the auto-generated weekly schedule: every placed time block per task, total scheduled hours per member, and any conflicts (tasks that didn't fit before their deadline). The scheduler reads each task's assignment, due date, and the assigned member's availability + energy/concentration curve.",
+      permission: false,
+      parameters: { type: "object", properties: {} },
+      execute: async () => {
+        const state = getState();
+        const { assignments } = getDerived();
+        const schedule = computeSchedule(state, assignments, new Date());
+        const totals = hoursPerMember(schedule);
+        const blocks = [];
+        for (const [taskId, bs] of Object.entries(schedule.placements)) {
+          const t = state.tasks.find((x) => x.id === taskId);
+          if (!t) continue;
+          for (const b of bs) {
+            const member = state.members.find((m) => m.id === b.memberId);
+            blocks.push({
+              task: t.title,
+              member: member?.name ?? null,
+              from: b.from,
+              to: b.to,
+              bucket: b.bucket,
+              score: b.score,
+            });
+          }
+        }
+        return ok({
+          weekStart: schedule.weekStart.toISOString(),
+          weekEnd: schedule.weekEnd.toISOString(),
+          totals: Object.entries(totals).map(([memberId, hours]) => ({
+            member: state.members.find((m) => m.id === memberId)?.name ?? memberId,
+            hours,
+          })),
+          blocks,
+          conflicts: schedule.conflicts,
+        });
       },
     },
 

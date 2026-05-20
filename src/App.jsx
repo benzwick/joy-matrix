@@ -2,9 +2,14 @@ import React, { useState, useEffect, useMemo, useContext, createContext } from "
 import {
   Plus, X, Sparkles, AlertTriangle, Trash2, RefreshCw,
   Zap, Heart, Brain, Battery, ArrowRight, Target, Users, ListTodo, Grid3x3, Activity,
-  Sun, Moon, Palette, RotateCcw, Download, Upload, Github, Linkedin, Instagram
+  Sun, Moon, Palette, RotateCcw, Download, Upload, Github, Linkedin, Instagram,
+  Calendar
 } from "lucide-react";
 import JoyMatrixChat from "./talk2view/JoyMatrixChat";
+import { FUZZY_VALUES, FUZZY_LABELS, formatDueDate, isOverdue } from "./scheduling/dueDate";
+import { DAYS, DAY_LABELS, WEEKDAYS, weekdayNineToFive, normaliseRanges, weeklyAvailableHours } from "./scheduling/availability";
+import { DAYTIMES, DAYTIME_LABELS, SCORE_LABELS, defaultWindows } from "./scheduling/windows";
+import { computeSchedule, hoursPerMember } from "./scheduling/schedule";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types of intent
@@ -18,7 +23,7 @@ import JoyMatrixChat from "./talk2view/JoyMatrixChat";
 
 const STORAGE_KEY = "joy-matrix-state-v1";
 const THEME_STORAGE_KEY = "joy-matrix-theme-v1";
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const DEMO_STATE = {
   schemaVersion: SCHEMA_VERSION,
@@ -40,6 +45,21 @@ const DEMO_STATE = {
   members: [
     {
       id: "m1", name: "Maya", capacity: 2,
+      availability: {
+        mon: [{ from: "09:00", to: "17:00" }],
+        tue: [{ from: "09:00", to: "17:00" }],
+        wed: [{ from: "09:00", to: "17:00" }],
+        thu: [{ from: "09:00", to: "17:00" }],
+        fri: [{ from: "09:00", to: "15:00" }],
+        sat: [],
+        sun: [],
+      },
+      windows: {
+        morning:   { energy: 3, concentration: 3 },
+        midday:    { energy: 2, concentration: 2 },
+        afternoon: { energy: 1, concentration: 1 },
+        evening:   { energy: 1, concentration: 2 },
+      },
       categoryScores: {
         "c-eng": { pleasure: 1,  talent: 2  },
         "c-des": { pleasure: 3,  talent: 3  },
@@ -49,6 +69,21 @@ const DEMO_STATE = {
     },
     {
       id: "m2", name: "Jordan", capacity: 0,
+      availability: {
+        mon: [{ from: "10:00", to: "13:00" }, { from: "14:00", to: "19:00" }],
+        tue: [{ from: "10:00", to: "13:00" }, { from: "14:00", to: "19:00" }],
+        wed: [{ from: "10:00", to: "13:00" }, { from: "14:00", to: "19:00" }],
+        thu: [],
+        fri: [{ from: "10:00", to: "13:00" }, { from: "14:00", to: "19:00" }],
+        sat: [],
+        sun: [],
+      },
+      windows: {
+        morning:   { energy: 1, concentration: 2 },
+        midday:    { energy: 2, concentration: 3 },
+        afternoon: { energy: 3, concentration: 3 },
+        evening:   { energy: 2, concentration: 2 },
+      },
       categoryScores: {
         "c-eng": { pleasure: 3,  talent: 3  },
         "c-des": { pleasure: 1,  talent: 0  },
@@ -58,6 +93,21 @@ const DEMO_STATE = {
     },
     {
       id: "m3", name: "Sam", capacity: -1,
+      availability: {
+        mon: [{ from: "08:00", to: "12:00" }],
+        tue: [{ from: "08:00", to: "12:00" }],
+        wed: [{ from: "08:00", to: "12:00" }],
+        thu: [{ from: "08:00", to: "12:00" }],
+        fri: [{ from: "08:00", to: "12:00" }],
+        sat: [{ from: "10:00", to: "13:00" }],
+        sun: [],
+      },
+      windows: {
+        morning:   { energy: 3, concentration: 2 },
+        midday:    { energy: 2, concentration: 2 },
+        afternoon: { energy: 1, concentration: 1 },
+        evening:   { energy: 1, concentration: 1 },
+      },
       categoryScores: {
         "c-eng": { pleasure: -1, talent: -2 },
         "c-des": { pleasure: 1,  talent: 1  },
@@ -70,6 +120,7 @@ const DEMO_STATE = {
     {
       id: "t1", title: "Ship landing page redesign", categoryId: "c-des", stakeholderId: "s-users",
       urgency: 4, importance: 4, effort: 2,
+      dueDate: { kind: "fuzzy", value: "this-week" },
       scores: {
         m1: { pleasure: 3, talent: 3 },
         m2: { pleasure: 0, talent: 1 },
@@ -79,6 +130,7 @@ const DEMO_STATE = {
     {
       id: "t2", title: "Set up Stripe + billing flows", categoryId: "c-eng", stakeholderId: "s-founder",
       urgency: 3, importance: 5, effort: 4,
+      dueDate: { kind: "fuzzy", value: "soon" },
       scores: {
         m1: { pleasure: -2, talent: 0 },
         m2: { pleasure: 1, talent: 3 },
@@ -88,6 +140,7 @@ const DEMO_STATE = {
     {
       id: "t3", title: "Write & schedule launch tweet thread", categoryId: "c-mkt", stakeholderId: "s-users",
       urgency: 5, importance: 2, effort: 1,
+      dueDate: { kind: "fuzzy", value: "this-afternoon" },
       scores: {
         m1: { pleasure: 1, talent: 2 },
         m2: { pleasure: -1, talent: 0 },
@@ -97,6 +150,7 @@ const DEMO_STATE = {
     {
       id: "t4", title: "Refactor auth (tech debt)", categoryId: "c-eng", stakeholderId: "s-team",
       urgency: 1, importance: 4, effort: 4,
+      dueDate: { kind: "fuzzy", value: "later" },
       scores: {
         m1: { pleasure: -2, talent: -1 },
         m2: { pleasure: 2, talent: 3 },
@@ -106,6 +160,7 @@ const DEMO_STATE = {
     {
       id: "t5", title: "Update outdated help docs", categoryId: "c-ops",
       urgency: 1, importance: 1, effort: 2,
+      dueDate: { kind: "fuzzy", value: "whenever" },
       scores: {
         m1: { pleasure: -1, talent: 1 },
         m2: { pleasure: -2, talent: 0 },
@@ -115,6 +170,7 @@ const DEMO_STATE = {
     {
       id: "t6", title: "Run 5 user research interviews", categoryId: "c-des", stakeholderId: "s-users",
       urgency: 2, importance: 5, effort: 3,
+      dueDate: { kind: "fuzzy", value: "this-week" },
       scores: {
         m1: { pleasure: 2, talent: 2 },
         m2: { pleasure: -2, talent: 0 },
@@ -802,9 +858,9 @@ function AppInner() {
     if (!name) return;
     update(s => {
       const id = "m" + Date.now();
-      s.members.push({ id, name, capacity: 0, categoryScores: {} });
+      s.members.push({ id, name, capacity: 0, categoryScores: {}, availability: weekdayNineToFive(), windows: defaultWindows() });
       // initialize empty scores in each task
-      s.tasks.forEach(t => { t.scores[id] = { pleasure: 0, talent: 0 }; });
+      s.tasks.forEach(t => { t.scores[id] = { pleasure: 0, talent: 0, difficulty: 3 }; });
       return s;
     });
   };
@@ -825,8 +881,8 @@ function AppInner() {
       const scores = {};
       // New tasks start with autoFilled=true so the first category pick
       // can seed scores from each member's baseline.
-      s.members.forEach(m => { scores[m.id] = { pleasure: 0, talent: 0, autoFilled: true }; });
-      s.tasks.push({ id, title, categoryId: null, stakeholderId: null, urgency: 3, importance: 3, effort: 2, scores });
+      s.members.forEach(m => { scores[m.id] = { pleasure: 0, talent: 0, difficulty: 3, autoFilled: true }; });
+      s.tasks.push({ id, title, categoryId: null, stakeholderId: null, urgency: 3, importance: 3, effort: 2, dueDate: null, scores });
       return s;
     });
   };
@@ -988,14 +1044,23 @@ function AppInner() {
             ["matrix",  "Matrix",  Grid3x3],
             ["team",    "Team",    Users],
             ["tasks",   "Tasks",   ListTodo],
+            ["schedule","Schedule",Calendar],
             ["insights","Insights",Activity],
           ].map(([key, label, Icon]) => (
-            <button key={key} onClick={() => setTab(key)} style={{
-              ...tabBtn,
-              ...(tab === key ? tabBtnActive : {}),
-              ...(isPhone ? { padding: "6px 8px", fontSize: 10, gap: 4, flex: "0 1 auto" } : {}),
-            }}>
-              <Icon size={isPhone ? 12 : 13} /> {label}
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              title={label}
+              aria-label={label}
+              style={{
+                ...tabBtn,
+                ...(tab === key ? tabBtnActive : {}),
+                ...(isPhone ? { padding: "6px 8px", fontSize: 10, gap: 4, flex: "0 1 auto", justifyContent: "center" } : {}),
+              }}
+            >
+              <Icon size={isPhone ? 14 : 13} />
+              {!isPhone && <span>{label}</span>}
+              {isPhone && tab === key && <span>{label}</span>}
             </button>
           ))}
         </div>
@@ -1005,6 +1070,7 @@ function AppInner() {
         {tab === "matrix"   && <MatrixView state={state} assignments={assignments} onEditTask={(t) => { setTab("tasks"); setEditingTask(t.id); }} />}
         {tab === "team"     && <TeamView state={state} update={update} addMember={addMember} removeMember={removeMember} summary={summary} />}
         {tab === "tasks"    && <TasksView state={state} update={update} addTask={addTask} removeTask={removeTask} editing={editingTask} setEditing={setEditingTask} assignments={assignments} setTaskCategory={setTaskCategory} />}
+        {tab === "schedule" && <ScheduleView state={state} assignments={assignments} />}
         {tab === "insights" && <InsightsView state={state} summary={summary} assignments={assignments} />}
       </main>
 
@@ -1193,6 +1259,9 @@ function MatrixView({ state, assignments, onEditTask }) {
                             <AlertTriangle size={10} /> risk
                           </span>
                         )}
+                        {t.dueDate && (
+                          <DueDateChip dueDate={t.dueDate} />
+                        )}
                         <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, color: colors.inkSoft, marginLeft: "auto" }}>
                           U{t.urgency} I{t.importance} E{t.effort}
                         </span>
@@ -1317,6 +1386,10 @@ function TeamView({ state, update, addMember, removeMember, summary }) {
 
               <MemberBaselines member={m} categories={state.categories || []} update={update} />
 
+              <MemberAvailability member={m} update={update} />
+
+              <MemberWindows member={m} update={update} />
+
               {s && (
                 <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px dashed ${colors.rule}` }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -1401,6 +1474,191 @@ function MemberBaselines({ member, categories, update }) {
   );
 }
 
+// Per-day availability windows editor. Collapsed by default; renders
+// 7 rows when open with inline HH:MM range editing.
+function MemberAvailability({ member, update }) {
+  const [open, setOpen] = useState(false);
+  const availability = member.availability || {};
+  const totalRanges = DAYS.reduce((n, d) => n + (availability[d]?.length || 0), 0);
+
+  const setDay = (day, ranges) => update(st => {
+    const m = st.members.find(x => x.id === member.id);
+    m.availability = m.availability || {};
+    m.availability[day] = normaliseRanges(ranges);
+    return st;
+  });
+
+  const fillWeekdays = () => update(st => {
+    const m = st.members.find(x => x.id === member.id);
+    m.availability = m.availability || {};
+    for (const d of DAYS) {
+      m.availability[d] = WEEKDAYS.includes(d) ? [{ from: "09:00", to: "17:00" }] : [];
+    }
+    return st;
+  });
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: "transparent", border: "none", padding: 0, cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 6, width: "100%",
+          fontFamily: "var(--joy-font-mono)", fontSize: 10, letterSpacing: "0.12em",
+          textTransform: "uppercase", color: colors.inkSoft,
+        }}
+        aria-expanded={open}
+      >
+        <span>AVAILABILITY {totalRanges > 0 && `· ${totalRanges} window${totalRanges === 1 ? "" : "s"}`}</span>
+        <span style={{ marginLeft: "auto", fontSize: 14 }}>{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+          <button onClick={fillWeekdays} style={{ ...btnGhost, alignSelf: "start", fontSize: 10, padding: "4px 10px" }}>
+            ⤺ weekdays 9–5
+          </button>
+          {DAYS.map(d => {
+            const ranges = availability[d] || [];
+            return (
+              <div key={d} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, minWidth: 28 }}>
+                  {DAY_LABELS[d]}
+                </span>
+                {ranges.length === 0 && (
+                  <span style={{ color: colors.inkSoft, fontStyle: "italic" }}>off</span>
+                )}
+                {ranges.map((r, i) => (
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <input
+                      type="time"
+                      value={r.from}
+                      onChange={(e) => {
+                        const next = ranges.map((x, j) => j === i ? { ...x, from: e.target.value } : x);
+                        setDay(d, next);
+                      }}
+                      style={{
+                        fontFamily: "var(--joy-font-mono)", fontSize: 11,
+                        padding: "2px 4px", borderRadius: 4,
+                        background: colors.paper, color: colors.ink,
+                        border: `1px solid ${colors.rule}`,
+                      }}
+                    />
+                    <span style={{ color: colors.inkSoft }}>–</span>
+                    <input
+                      type="time"
+                      value={r.to}
+                      onChange={(e) => {
+                        const next = ranges.map((x, j) => j === i ? { ...x, to: e.target.value } : x);
+                        setDay(d, next);
+                      }}
+                      style={{
+                        fontFamily: "var(--joy-font-mono)", fontSize: 11,
+                        padding: "2px 4px", borderRadius: 4,
+                        background: colors.paper, color: colors.ink,
+                        border: `1px solid ${colors.rule}`,
+                      }}
+                    />
+                    <button
+                      onClick={() => setDay(d, ranges.filter((_, j) => j !== i))}
+                      style={{ ...btnIcon, width: 18, height: 18 }}
+                      title="remove range"
+                    >
+                      <X size={10}/>
+                    </button>
+                  </span>
+                ))}
+                <button
+                  onClick={() => {
+                    const last = ranges[ranges.length - 1];
+                    const from = last ? last.to : "09:00";
+                    const toHour = Math.min(23, parseInt(from, 10) + 4);
+                    const to = `${String(toHour).padStart(2, "0")}:00`;
+                    setDay(d, [...ranges, { from, to }]);
+                  }}
+                  style={{ ...btnGhost, fontSize: 10, padding: "2px 6px", marginLeft: "auto" }}
+                  title="add range"
+                >
+                  + range
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Per-time-of-day energy + concentration sliders. Collapsed by default;
+// when open shows 4 rows (morning / midday / afternoon / evening), each
+// with two 1–3 sliders. The scheduler uses these to match task effort
+// and difficulty against the right time of day.
+function MemberWindows({ member, update }) {
+  const [open, setOpen] = useState(false);
+  const windows = member.windows || defaultWindows();
+
+  const setBucket = (bucket, field, value) => update(st => {
+    const m = st.members.find(x => x.id === member.id);
+    m.windows = m.windows || defaultWindows();
+    m.windows[bucket] = { ...m.windows[bucket], [field]: value };
+    return st;
+  });
+
+  // Sum tells the user "how skewed is this curve" — non-neutral if any
+  // bucket score differs from 2.
+  const nonNeutral = DAYTIMES.some(t => {
+    const w = windows[t] || { energy: 2, concentration: 2 };
+    return w.energy !== 2 || w.concentration !== 2;
+  });
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: "transparent", border: "none", padding: 0, cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 6, width: "100%",
+          fontFamily: "var(--joy-font-mono)", fontSize: 10, letterSpacing: "0.12em",
+          textTransform: "uppercase", color: colors.inkSoft,
+        }}
+        aria-expanded={open}
+      >
+        <span>ENERGY · CONCENTRATION {nonNeutral && "· tuned"}</span>
+        <span style={{ marginLeft: "auto", fontSize: 14 }}>{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          {DAYTIMES.map(bucket => {
+            const w = windows[bucket] || { energy: 2, concentration: 2 };
+            return (
+              <div key={bucket} style={{
+                display: "grid", gridTemplateColumns: "minmax(70px, 80px) 1fr 1fr", gap: 8, alignItems: "center",
+                padding: "6px 8px", background: "rgba(28,25,22,0.025)", borderRadius: 6,
+              }}>
+                <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  {DAYTIME_LABELS[bucket]}
+                </div>
+                <Slider
+                  value={w.energy}
+                  onChange={(v) => setBucket(bucket, "energy", v)}
+                  min={1} max={3} color={colors.rust}
+                  label={<span><Zap size={9} style={{display:"inline"}}/> {SCORE_LABELS[w.energy]}</span>}
+                />
+                <Slider
+                  value={w.concentration}
+                  onChange={(v) => setBucket(bucket, "concentration", v)}
+                  min={1} max={3} color={colors.teal}
+                  label={<span><Brain size={9} style={{display:"inline"}}/> {SCORE_LABELS[w.concentration]}</span>}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function capacityWord(c) {
   if (c >= 2) return "lots of bandwidth";
   if (c === 1) return "available";
@@ -1461,6 +1719,7 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                     <Pill tone={q === "DO" ? "rust" : q === "SCHEDULE" ? "teal" : "ink"}>{q}</Pill>
                     {assignee && <Pill tone="ink">→ {assignee.name}</Pill>}
                     {a?.burnoutRisk && <Pill tone="warn"><AlertTriangle size={9} style={{ display: "inline", verticalAlign: "middle" }} /> risk</Pill>}
+                    {t.dueDate && <DueDatePill dueDate={t.dueDate} />}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
@@ -1530,6 +1789,10 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                       )}
                     </div>
                   )}
+                  <DueDatePicker
+                    value={t.dueDate}
+                    onChange={(next) => update(st => { st.tasks.find(x => x.id === t.id).dueDate = next; return st; })}
+                  />
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
                     <Slider value={t.urgency} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).urgency = v; return st; })} min={1} max={5} color={colors.rustDeep} label="urgency" />
                     <Slider value={t.importance} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).importance = v; return st; })} min={1} max={5} color={colors.teal} label="importance" />
@@ -1541,15 +1804,33 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                       <div style={{ ...mutedLabel, marginBottom: 8 }}>PER-MEMBER FIT</div>
                       <div style={{ display: "grid", gap: 10 }}>
                         {state.members.map(m => {
-                          const sc = t.scores[m.id] ?? { pleasure: 0, talent: 0 };
+                          const sc = t.scores[m.id] ?? { pleasure: 0, talent: 0, difficulty: 3 };
+                          const setField = (field, value) => update(st => {
+                            st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, [field]: value, autoFilled: false };
+                            return st;
+                          });
                           return (
                             <div key={m.id} style={{
-                              display: "grid", gridTemplateColumns: "minmax(80px, 100px) 1fr 1fr", gap: 12, alignItems: "center",
+                              display: "grid",
+                              gridTemplateColumns: isPhone ? "1fr" : "minmax(80px, 100px) 1fr 1fr 1fr",
+                              gap: isPhone ? 6 : 12,
+                              alignItems: "center",
                               padding: "8px 10px", background: "rgba(28,25,22,0.025)", borderRadius: 8,
                             }}>
                               <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600, fontSize: 14 }}>{m.name}</div>
-                              <Slider value={sc.pleasure} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, pleasure: v, autoFilled: false }; return st; })} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
-                              <Slider value={sc.talent} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, talent: v, autoFilled: false }; return st; })} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
+                              {isPhone ? (
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                                  <Slider value={sc.pleasure} onChange={(v) => setField("pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
+                                  <Slider value={sc.talent} onChange={(v) => setField("talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
+                                  <Slider value={sc.difficulty ?? 3} onChange={(v) => setField("difficulty", v)} min={1} max={5} color={colors.ochre} label={<span><Zap size={9} style={{display:"inline"}}/> difficulty</span>} />
+                                </div>
+                              ) : (
+                                <>
+                                  <Slider value={sc.pleasure} onChange={(v) => setField("pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
+                                  <Slider value={sc.talent} onChange={(v) => setField("talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
+                                  <Slider value={sc.difficulty ?? 3} onChange={(v) => setField("difficulty", v)} min={1} max={5} color={colors.ochre} label={<span><Zap size={9} style={{display:"inline"}}/> difficulty</span>} />
+                                </>
+                              )}
                             </div>
                           );
                         })}
@@ -1558,6 +1839,452 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                   )}
                 </div>
               )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Schedule View
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ScheduleView({ state, assignments }) {
+  const isPhone = useViewportWidth() < 480;
+  const [viewMode, setViewMode] = useState("week");
+  // Memoise on the state inputs so the algorithm doesn't re-run on
+  // unrelated re-renders (theme changes, hover, etc.).
+  const schedule = useMemo(
+    () => computeSchedule(state, assignments, new Date()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.tasks, state.members, assignments]
+  );
+  const totals = hoursPerMember(schedule);
+
+  // Flatten placements into { taskId, ...block } records for sub-views.
+  const allBlocks = [];
+  for (const [taskId, blocks] of Object.entries(schedule.placements)) {
+    for (const b of blocks) allBlocks.push({ taskId, ...b });
+  }
+
+  return (
+    <div>
+      <SectionHead
+        eyebrow="04"
+        title="The Schedule"
+        sub="Tasks placed into real time, matched to each person's availability and energy curve."
+        action={<ScheduleViewSwitcher value={viewMode} onChange={setViewMode} />}
+      />
+
+      {schedule.conflicts.length > 0 && (
+        <div style={{
+          marginTop: 16, padding: 12, borderRadius: 10,
+          background: "rgba(184,73,42,0.08)", border: "1px solid rgba(184,73,42,0.3)",
+          color: colors.rustDeep,
+        }}>
+          <div style={{ ...mutedLabel, color: colors.rustDeep, marginBottom: 6 }}>
+            CONFLICTS · {schedule.conflicts.length}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13 }}>
+            {schedule.conflicts.map((c) => (
+              <div key={c.taskId}>
+                <strong>{c.title}</strong> — {c.reason}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {allBlocks.length === 0 && schedule.conflicts.length === 0 && (
+        <Empty>
+          Nothing scheduled. Tasks need an assigned member, a due date, and
+          availability windows within the next 7 days.
+        </Empty>
+      )}
+
+      {viewMode === "week" && allBlocks.length > 0 && (
+        <ScheduleWeekView state={state} schedule={schedule} totals={totals} isPhone={isPhone} />
+      )}
+      {viewMode === "day" && (
+        <ScheduleDayView state={state} schedule={schedule} allBlocks={allBlocks} isPhone={isPhone} />
+      )}
+      {viewMode === "month" && (
+        <ScheduleMonthView state={state} schedule={schedule} allBlocks={allBlocks} />
+      )}
+      {viewMode === "year" && (
+        <ScheduleYearView allBlocks={allBlocks} />
+      )}
+    </div>
+  );
+}
+
+function ScheduleViewSwitcher({ value, onChange }) {
+  const opts = [["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]];
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      {opts.map(([k, label]) => (
+        <button
+          key={k}
+          onClick={() => onChange(k)}
+          style={{
+            ...btnGhost,
+            padding: "5px 10px", fontSize: 10,
+            ...(value === k ? { background: colors.teal, color: "#ffffff", borderColor: colors.teal } : {}),
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ScheduleWeekView({ state, schedule, totals, isPhone }) {
+  const scheduledMemberIds = new Set();
+  for (const blocks of Object.values(schedule.placements)) {
+    for (const b of blocks) scheduledMemberIds.add(b.memberId);
+  }
+  const swimLanes = state.members.filter(m => scheduledMemberIds.has(m.id));
+
+  const dayCols = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(schedule.weekStart.getTime() + i * 24 * 60 * 60 * 1000);
+    dayCols.push(d);
+  }
+
+  const placementsByMemberDay = {};
+  for (const [taskId, blocks] of Object.entries(schedule.placements)) {
+    for (const b of blocks) {
+      const from = new Date(b.from);
+      const key = `${b.memberId}|${from.getFullYear()}-${from.getMonth()}-${from.getDate()}`;
+      if (!placementsByMemberDay[key]) placementsByMemberDay[key] = [];
+      placementsByMemberDay[key].push({ ...b, taskId });
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+      {swimLanes.map((m) => (
+        <ScheduleLane
+          key={m.id}
+          member={m}
+          dayCols={dayCols}
+          placementsByMemberDay={placementsByMemberDay}
+          tasks={state.tasks}
+          totalHours={totals[m.id] || 0}
+          isPhone={isPhone}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Single-day stacked view: each member is a column, rows are 30-min
+// slots from earliest to latest availability across the day's blocks.
+function ScheduleDayView({ state, schedule, allBlocks, isPhone }) {
+  const [offset, setOffset] = useState(0);
+  const day = new Date(schedule.weekStart.getTime() + offset * 24 * 60 * 60 * 1000);
+  const dayBlocks = allBlocks.filter((b) => {
+    const from = new Date(b.from);
+    return from.getFullYear() === day.getFullYear()
+      && from.getMonth() === day.getMonth()
+      && from.getDate() === day.getDate();
+  });
+
+  // Member columns: only those with blocks today.
+  const memberIds = [...new Set(dayBlocks.map(b => b.memberId))];
+  const members = state.members.filter(m => memberIds.includes(m.id));
+
+  // Hour range: earliest start to latest end across today's blocks.
+  let minHour = 9;
+  let maxHour = 17;
+  if (dayBlocks.length) {
+    minHour = Math.min(...dayBlocks.map(b => new Date(b.from).getHours()));
+    maxHour = Math.max(...dayBlocks.map(b => new Date(b.to).getHours() + (new Date(b.to).getMinutes() > 0 ? 1 : 0)));
+  }
+  const rows = [];
+  for (let h = minHour; h < maxHour; h++) rows.push(h);
+
+  const tonesByQuadrant = {
+    DO: { fg: colors.rustDeep, bg: "rgba(184,73,42,0.10)" },
+    SCHEDULE: { fg: colors.teal, bg: "rgba(42,93,93,0.10)" },
+    DELEGATE: { fg: colors.ochre, bg: "rgba(201,138,44,0.12)" },
+    ELIMINATE: { fg: colors.inkSoft, bg: "rgba(28,25,22,0.06)" },
+  };
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <button onClick={() => setOffset(o => Math.max(0, o - 1))} style={btnGhost}>‹ prev</button>
+        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }}>
+          {day.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}
+        </div>
+        <button onClick={() => setOffset(o => Math.min(6, o + 1))} style={btnGhost}>next ›</button>
+      </div>
+      {members.length === 0 && <Empty>Nothing scheduled this day.</Empty>}
+      {members.length > 0 && (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: `60px repeat(${members.length}, 1fr)`,
+          gap: 4,
+          ...card,
+          padding: 10,
+        }}>
+          <div></div>
+          {members.map(m => (
+            <div key={m.id} style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 14, textAlign: "center" }}>
+              {m.name}
+            </div>
+          ))}
+          {rows.map(h => (
+            <React.Fragment key={h}>
+              <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, paddingTop: 4 }}>
+                {String(h).padStart(2, "0")}:00
+              </div>
+              {members.map(m => {
+                const hourBlocks = dayBlocks.filter(b => {
+                  const from = new Date(b.from);
+                  return b.memberId === m.id && from.getHours() === h;
+                });
+                return (
+                  <div key={m.id} style={{
+                    minHeight: 44, padding: 3, borderTop: `1px dashed ${colors.rule}`,
+                    display: "flex", flexDirection: "column", gap: 2,
+                  }}>
+                    {hourBlocks.map((b, i) => {
+                      const t = state.tasks.find(x => x.id === b.taskId);
+                      if (!t) return null;
+                      const tone = tonesByQuadrant[quadrantOf(t)] || tonesByQuadrant.ELIMINATE;
+                      const from = new Date(b.from);
+                      return (
+                        <div key={i} style={{
+                          padding: "3px 6px", borderRadius: 5,
+                          background: tone.bg, borderLeft: `3px solid ${tone.fg}`,
+                          fontSize: 11, color: colors.ink,
+                        }}>
+                          <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, color: tone.fg, marginRight: 4 }}>
+                            :{String(from.getMinutes()).padStart(2, "0")}
+                          </span>
+                          {t.title}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Calendar-month grid. Each day cell shows total blocks + hours
+// across all members on that date.
+function ScheduleMonthView({ state, schedule, allBlocks }) {
+  const today = new Date();
+  const [monthOffset, setMonthOffset] = useState(0);
+  const monthAnchor = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+  const monthName = monthAnchor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+  // Build a Mon-first 6-row calendar grid.
+  const firstDay = new Date(monthAnchor);
+  const jsDow = firstDay.getDay();
+  const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow; // shift so Mon = 0
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() + mondayOffset);
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    cells.push(new Date(gridStart.getTime() + i * 24 * 60 * 60 * 1000));
+  }
+
+  // Aggregate hours + counts per day.
+  const dayStats = {};
+  for (const b of allBlocks) {
+    const from = new Date(b.from);
+    const key = `${from.getFullYear()}-${from.getMonth()}-${from.getDate()}`;
+    if (!dayStats[key]) dayStats[key] = { count: 0, hours: 0 };
+    dayStats[key].count += 1;
+    dayStats[key].hours += 0.5;
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <button onClick={() => setMonthOffset(o => o - 1)} style={btnGhost}>‹ prev</button>
+        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }}>{monthName}</div>
+        <button onClick={() => setMonthOffset(o => o + 1)} style={btnGhost}>next ›</button>
+      </div>
+      <div style={{ ...card, padding: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
+            <div key={d} style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.08em", textAlign: "center" }}>
+              {d.toUpperCase()}
+            </div>
+          ))}
+          {cells.map((d, i) => {
+            const inMonth = d.getMonth() === monthAnchor.getMonth();
+            const isToday = d.toDateString() === today.toDateString();
+            const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+            const stats = dayStats[key];
+            return (
+              <div key={i} style={{
+                minHeight: 68, padding: 6, borderRadius: 6,
+                background: stats ? "rgba(42,93,93,0.10)" : "rgba(28,25,22,0.025)",
+                border: isToday ? `1.5px solid ${colors.teal}` : `1px solid ${colors.rule}`,
+                opacity: inMonth ? 1 : 0.35,
+                display: "flex", flexDirection: "column", gap: 2,
+              }}>
+                <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, color: colors.inkSoft }}>{d.getDate()}</div>
+                {stats && (
+                  <div style={{ marginTop: "auto", fontSize: 11 }}>
+                    <div style={{ color: colors.teal, fontWeight: 600 }}>{stats.hours.toFixed(1)}h</div>
+                    <div style={{ color: colors.inkSoft, fontSize: 10 }}>{stats.count} block{stats.count === 1 ? "" : "s"}</div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Year heatmap: 53-week grid, 7 rows (Mon..Sun), each cell shaded by
+// total scheduled hours that day.
+function ScheduleYearView({ allBlocks }) {
+  const today = new Date();
+  // Anchor: start of the ISO-ish year (Jan 1's Monday).
+  const yearStart = new Date(today.getFullYear(), 0, 1);
+  const jsDow = yearStart.getDay();
+  const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow;
+  const gridStart = new Date(yearStart);
+  gridStart.setDate(yearStart.getDate() + mondayOffset);
+
+  const dayHours = {};
+  for (const b of allBlocks) {
+    const from = new Date(b.from);
+    const key = `${from.getFullYear()}-${from.getMonth()}-${from.getDate()}`;
+    dayHours[key] = (dayHours[key] || 0) + 0.5;
+  }
+
+  const shadeFor = (hours) => {
+    if (!hours) return "rgba(28,25,22,0.06)";
+    if (hours < 2) return "rgba(58,168,154,0.20)";
+    if (hours < 4) return "rgba(58,168,154,0.40)";
+    if (hours < 6) return "rgba(58,168,154,0.65)";
+    return "rgba(58,168,154,0.90)";
+  };
+
+  // 53 weeks × 7 days.
+  const weeks = [];
+  for (let w = 0; w < 53; w++) {
+    const col = [];
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(gridStart.getTime() + (w * 7 + d) * 24 * 60 * 60 * 1000);
+      col.push(date);
+    }
+    weeks.push(col);
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ ...card, padding: 14, overflowX: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }}>
+            {today.getFullYear()}
+          </div>
+          <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, color: colors.inkSoft }}>
+            scheduled hours per day · {Object.values(dayHours).reduce((a, b) => a + b, 0).toFixed(1)}h total
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(53, 12px)`, gap: 2 }}>
+          {weeks.map((col, wi) => (
+            <div key={wi} style={{ display: "grid", gridTemplateRows: "repeat(7, 12px)", gap: 2 }}>
+              {col.map((d, di) => {
+                const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                const h = dayHours[key] || 0;
+                const inYear = d.getFullYear() === today.getFullYear();
+                return (
+                  <div key={di}
+                    title={`${d.toLocaleDateString()} — ${h.toFixed(1)}h`}
+                    style={{
+                      width: 12, height: 12, borderRadius: 2,
+                      background: inYear ? shadeFor(h) : "rgba(28,25,22,0.02)",
+                      border: `1px solid ${colors.rule}`,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScheduleLane({ member, dayCols, placementsByMemberDay, tasks, totalHours, isPhone }) {
+  const tonesByQuadrant = {
+    DO: { fg: colors.rustDeep, bg: "rgba(184,73,42,0.10)" },
+    SCHEDULE: { fg: colors.teal, bg: "rgba(42,93,93,0.10)" },
+    DELEGATE: { fg: colors.ochre, bg: "rgba(201,138,44,0.12)" },
+    ELIMINATE: { fg: colors.inkSoft, bg: "rgba(28,25,22,0.06)" },
+  };
+  return (
+    <div style={{ ...card, padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }}>{member.name}</div>
+        <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, color: colors.inkSoft }}>
+          {totalHours.toFixed(1)}h scheduled
+        </div>
+      </div>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: isPhone ? "repeat(7, minmax(60px, 1fr))" : "repeat(7, 1fr)",
+        gap: 6,
+        overflowX: "auto",
+      }}>
+        {dayCols.map((day, idx) => {
+          const key = `${member.id}|${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
+          const blocks = (placementsByMemberDay[key] || []).sort(
+            (a, b) => new Date(a.from).getTime() - new Date(b.from).getTime()
+          );
+          return (
+            <div key={idx} style={{
+              minHeight: 110, padding: 6, borderRadius: 8,
+              background: "rgba(28,25,22,0.025)", border: `1px dashed ${colors.rule}`,
+              display: "flex", flexDirection: "column", gap: 4,
+            }}>
+              <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, color: colors.inkSoft, letterSpacing: "0.04em" }}>
+                {day.toLocaleDateString(undefined, { weekday: "short" }).toUpperCase()} {day.getDate()}
+              </div>
+              {blocks.length === 0 && (
+                <div style={{ fontStyle: "italic", color: colors.inkSoft, fontSize: 10 }}>—</div>
+              )}
+              {blocks.map((b, i) => {
+                const t = tasks.find(x => x.id === b.taskId);
+                if (!t) return null;
+                const tone = tonesByQuadrant[quadrantOf(t)] || tonesByQuadrant.ELIMINATE;
+                const from = new Date(b.from);
+                const to = new Date(b.to);
+                return (
+                  <div key={i} title={`${t.title} · score ${b.score}`} style={{
+                    padding: "4px 6px", borderRadius: 6,
+                    background: tone.bg, borderLeft: `3px solid ${tone.fg}`,
+                    fontSize: 11, lineHeight: 1.25, color: colors.ink,
+                  }}>
+                    <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, color: tone.fg, fontWeight: 600 }}>
+                      {String(from.getHours()).padStart(2, "0")}:{String(from.getMinutes()).padStart(2, "0")}–{String(to.getHours()).padStart(2, "0")}:{String(to.getMinutes()).padStart(2, "0")}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 500 }}>{t.title}</div>
+                  </div>
+                );
+              })}
             </div>
           );
         })}
@@ -1687,7 +2414,78 @@ function InsightsView({ state, summary, assignments }) {
         </div>
       )}
 
+      <ScheduleInsights state={state} assignments={assignments} summary={summary} />
+
       <ProgressNarrative state={state} summary={summary} totalJoy={totalJoy} burnoutCount={burnoutCount} />
+    </div>
+  );
+}
+
+// Scheduling-side stats: weekly scheduled hours per person, idle
+// availability (unused windows), and overschedule warnings (when a
+// person's placed blocks exceed their effort budget × 1.5h).
+function ScheduleInsights({ state, assignments, summary }) {
+  const isPhone = useViewportWidth() < 480;
+  const schedule = useMemo(
+    () => computeSchedule(state, assignments, new Date()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.tasks, state.members, assignments]
+  );
+  const totals = hoursPerMember(schedule);
+  if (state.members.length === 0) return null;
+
+  const rows = state.members.map(m => {
+    const scheduledHours = totals[m.id] || 0;
+    const availableHours = weeklyAvailableHours(m);
+    const idle = Math.max(0, availableHours - scheduledHours);
+    const budgetHours = (4 + m.capacity) * 1.5; // effort budget × 1.5h-per-effort-unit
+    const oversched = scheduledHours > budgetHours;
+    return { member: m, scheduledHours, availableHours, idle, budgetHours, oversched };
+  });
+
+  const anySched = rows.some(r => r.scheduledHours > 0);
+  if (!anySched) return null;
+
+  const Stats = ({ r }) => (
+    <>
+      <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12 }}>
+        <span style={{ color: r.oversched ? colors.rustDeep : colors.teal, fontWeight: 600 }}>
+          {r.scheduledHours.toFixed(1)}h
+        </span>
+        <span style={{ color: colors.inkSoft }}> scheduled</span>
+      </div>
+      <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12, color: colors.inkSoft }}>
+        {r.idle.toFixed(1)}h idle
+      </div>
+      <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12, color: r.oversched ? colors.rustDeep : colors.inkSoft }}>
+        {r.oversched ? `⚠ over by ${(r.scheduledHours - r.budgetHours).toFixed(1)}h` : `budget ${r.budgetHours.toFixed(1)}h`}
+      </div>
+    </>
+  );
+
+  return (
+    <div style={{ ...card, marginTop: 14 }}>
+      <div style={{ ...mutedLabel, marginBottom: 12 }}>THIS WEEK'S SCHEDULE</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: isPhone ? 14 : 10 }}>
+        {rows.map(r => (
+          <div key={r.member.id} style={{
+            display: "grid",
+            gridTemplateColumns: isPhone ? "1fr" : "minmax(80px, 100px) 1fr 1fr 1fr",
+            gap: isPhone ? 6 : 10,
+            alignItems: "baseline",
+            fontSize: 13,
+          }}>
+            <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600 }}>{r.member.name}</div>
+            {isPhone ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8 }}>
+                <Stats r={r} />
+              </div>
+            ) : (
+              <Stats r={r} />
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1879,6 +2677,104 @@ function StakeholdersBar({ state, update }) {
         </span>
       ))}
       <button onClick={add} style={{ ...btnGhost, padding: "4px 10px" }}><Plus size={11}/> add stakeholder</button>
+    </div>
+  );
+}
+
+// Compact due-date chip for the matrix grid (tiny mono style matching
+// the U/I/E badge at the right edge of each task chip).
+function DueDateChip({ dueDate }) {
+  const label = formatDueDate(dueDate);
+  if (!label) return null;
+  const overdue = isOverdue(dueDate);
+  return (
+    <span
+      title={`Due: ${label}`}
+      style={{
+        fontFamily: "var(--joy-font-mono)", fontSize: 9, letterSpacing: "0.04em",
+        color: overdue ? colors.rustDeep : colors.teal, fontWeight: 600,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+// Pill variant for the tasks-list cards (uses the existing Pill component
+// for visual consistency with the assignee / quadrant pills).
+function DueDatePill({ dueDate }) {
+  const label = formatDueDate(dueDate);
+  if (!label) return null;
+  const overdue = isOverdue(dueDate);
+  return <Pill tone={overdue ? "warn" : "teal"}>{label}</Pill>;
+}
+
+// Editor for a task's due date. Switches between a fuzzy-label select
+// and a native datetime input. "Clear" sets the field back to null.
+function DueDatePicker({ value, onChange }) {
+  const mode = value?.kind ?? "none";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <span style={mutedLabel}>DUE</span>
+      <div style={{ display: "flex", gap: 4 }}>
+        {[
+          ["none", "none"],
+          ["fuzzy", "fuzzy"],
+          ["exact", "exact"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => {
+              if (key === "none") onChange(null);
+              else if (key === "fuzzy") onChange({ kind: "fuzzy", value: value?.kind === "fuzzy" ? value.value : "today" });
+              else onChange({ kind: "exact", value: value?.kind === "exact" ? value.value : new Date().toISOString() });
+            }}
+            style={{
+              ...btnGhost,
+              padding: "4px 10px", fontSize: 10,
+              ...(mode === key ? { background: colors.teal, color: "#ffffff", borderColor: colors.teal } : {}),
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {mode === "fuzzy" && (
+        <select
+          value={value.value}
+          onChange={(e) => onChange({ kind: "fuzzy", value: e.target.value })}
+          style={{
+            padding: "5px 10px", borderRadius: 8,
+            background: colors.paper, color: colors.ink,
+            border: `1px solid ${colors.rule}`,
+            fontFamily: "var(--joy-font-body)", fontSize: 13, cursor: "pointer",
+          }}
+        >
+          {FUZZY_VALUES.map(fv => <option key={fv} value={fv}>{FUZZY_LABELS[fv]}</option>)}
+        </select>
+      )}
+      {mode === "exact" && (
+        <input
+          type="datetime-local"
+          value={(() => {
+            // datetime-local wants "YYYY-MM-DDTHH:mm" without timezone
+            const d = new Date(value.value);
+            if (Number.isNaN(d.getTime())) return "";
+            const pad = (n) => String(n).padStart(2, "0");
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+          })()}
+          onChange={(e) => {
+            const d = new Date(e.target.value);
+            if (!Number.isNaN(d.getTime())) onChange({ kind: "exact", value: d.toISOString() });
+          }}
+          style={{
+            padding: "5px 10px", borderRadius: 8,
+            background: colors.paper, color: colors.ink,
+            border: `1px solid ${colors.rule}`,
+            fontFamily: "var(--joy-font-body)", fontSize: 13,
+          }}
+        />
+      )}
     </div>
   );
 }
