@@ -224,20 +224,59 @@ either form: `"this-friday"` and `"2026-06-15T14:00"` both work.
 
 ---
 
-## The four tabs
+## The Schedule tab and auto-scheduler
+
+The Schedule tab (between Tasks and Insights) takes each task's
+assignment, due date, and the assigned member's availability +
+energy/concentration curve, and places work into real 30-minute time
+blocks on a rolling 7-day calendar.
+
+Algorithm (informal):
+
+1. Tasks with due dates land first, earliest deadline first. Tasks
+   with no deadline (or `whenever`) fill remaining capacity. `never`
+   tasks are excluded.
+2. Each task needs `effort × 1.5` hours, packed at 30-min granularity
+   (effort 1 → 3 slots, effort 5 → 15 slots).
+3. For each task, every free 30-min slot inside the assigned member's
+   availability before the deadline gets a score combining four
+   things:
+   - `−|effort − slot.energy|` (high effort wants high energy)
+   - `−|difficulty − slot.concentration|` (deep work wants peak focus)
+   - `+ pleasure × 0.5` (mild bonus where work is enjoyable)
+   - `+ talent × 0.3` (mild bonus where it's a strong fit)
+4. The top-N highest-scoring slots are picked and marked occupied.
+5. Tasks that don't fit before their deadline surface in a
+   "conflicts" strip with a reason.
+
+The tab has four view modes (Day / Week / Month / Year) sharing the
+same placement data; only the projection changes.
+
+The `summarize_schedule` tool returns this week's placements,
+per-member hour totals, and any conflicts in JSON for the chat to
+quote from.
+
+---
+
+## The five tabs
 
 - **Matrix** — the four-quadrant grid with task chips and assignees.
   Click a task chip to jump to its editor.
 - **Team** — one card per member: capacity slider, expandable category
-  baselines, and per-member rollup stats (tasks, load, joy, talent fit,
+  baselines, availability windows, energy + concentration curve,
+  per-member rollup stats (tasks, load, joy, talent fit,
   burnout/strain warnings).
 - **Tasks** — categories + stakeholders bars at top, then the task
   list. Each task is editable inline (title, U/I/E sliders, category,
-  stakeholder, per-member pleasure/talent grid).
+  stakeholder, due date picker, per-member pleasure/talent/difficulty
+  grid).
+- **Schedule** — auto-placement weekly calendar in four views
+  (Day / Week / Month / Year). See the section above.
 - **Insights** — global stats (total joy, total talent fit, burnout
   count, strain count), per-person joy×load bars, a "pain points" list
   (assignments where the chosen person has pleasure ≤ −2 or talent ≤ −2),
-  and a written "read" of whether the configuration is healthy or grinding.
+  a per-person scheduled / idle / over-budget breakdown, and a written
+  "read" of whether the configuration is healthy or grinding.
 
 ---
 

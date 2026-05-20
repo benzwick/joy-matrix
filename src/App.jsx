@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import JoyMatrixChat from "./talk2view/JoyMatrixChat";
 import { FUZZY_VALUES, FUZZY_LABELS, formatDueDate, isOverdue } from "./scheduling/dueDate";
-import { DAYS, DAY_LABELS, WEEKDAYS, weekdayNineToFive, normaliseRanges } from "./scheduling/availability";
+import { DAYS, DAY_LABELS, WEEKDAYS, weekdayNineToFive, normaliseRanges, weeklyAvailableHours } from "./scheduling/availability";
 import { DAYTIMES, DAYTIME_LABELS, SCORE_LABELS, defaultWindows } from "./scheduling/windows";
 import { computeSchedule, hoursPerMember } from "./scheduling/schedule";
 
@@ -2393,7 +2393,59 @@ function InsightsView({ state, summary, assignments }) {
         </div>
       )}
 
+      <ScheduleInsights state={state} assignments={assignments} summary={summary} />
+
       <ProgressNarrative state={state} summary={summary} totalJoy={totalJoy} burnoutCount={burnoutCount} />
+    </div>
+  );
+}
+
+// Scheduling-side stats: weekly scheduled hours per person, idle
+// availability (unused windows), and overschedule warnings (when a
+// person's placed blocks exceed their effort budget × 1.5h).
+function ScheduleInsights({ state, assignments, summary }) {
+  const schedule = useMemo(
+    () => computeSchedule(state, assignments, new Date()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.tasks, state.members, assignments]
+  );
+  const totals = hoursPerMember(schedule);
+  if (state.members.length === 0) return null;
+
+  const rows = state.members.map(m => {
+    const scheduledHours = totals[m.id] || 0;
+    const availableHours = weeklyAvailableHours(m);
+    const idle = Math.max(0, availableHours - scheduledHours);
+    const budgetHours = (4 + m.capacity) * 1.5; // effort budget × 1.5h-per-effort-unit
+    const oversched = scheduledHours > budgetHours;
+    return { member: m, scheduledHours, availableHours, idle, budgetHours, oversched };
+  });
+
+  const anySched = rows.some(r => r.scheduledHours > 0);
+  if (!anySched) return null;
+
+  return (
+    <div style={{ ...card, marginTop: 14 }}>
+      <div style={{ ...mutedLabel, marginBottom: 12 }}>THIS WEEK'S SCHEDULE</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {rows.map(r => (
+          <div key={r.member.id} style={{ display: "grid", gridTemplateColumns: "minmax(80px, 100px) 1fr 1fr 1fr", gap: 10, alignItems: "baseline", fontSize: 13 }}>
+            <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600 }}>{r.member.name}</div>
+            <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12 }}>
+              <span style={{ color: r.oversched ? colors.rustDeep : colors.teal, fontWeight: 600 }}>
+                {r.scheduledHours.toFixed(1)}h
+              </span>
+              <span style={{ color: colors.inkSoft }}> scheduled</span>
+            </div>
+            <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12, color: colors.inkSoft }}>
+              {r.idle.toFixed(1)}h idle
+            </div>
+            <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12, color: r.oversched ? colors.rustDeep : colors.inkSoft }}>
+              {r.oversched ? `⚠ over by ${(r.scheduledHours - r.budgetHours).toFixed(1)}h` : `budget ${r.budgetHours.toFixed(1)}h`}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
