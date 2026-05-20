@@ -592,7 +592,7 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
     {
       name: "set_task_score",
       description:
-        "Set a member's pleasure and/or talent score for one specific task. Locks the score so a later category change won't overwrite it. Use when a user gives task-specific feedback: 'On the auth refactor, Jordan loves it.'",
+        "Set a member's pleasure, talent, and/or difficulty score for one specific task. Locks the score so a later category change won't overwrite it. Use when a user gives task-specific feedback: 'On the auth refactor, Jordan loves it' or 'For Sam this is highly challenging'.",
       permission: false,
       parameters: {
         type: "object",
@@ -601,6 +601,7 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
           member_name: { type: "string" },
           pleasure: { type: "integer", minimum: -3, maximum: 3 },
           talent: { type: "integer", minimum: -3, maximum: 3 },
+          difficulty: { type: "integer", minimum: 1, maximum: 5, description: "1 = mindless, 5 = deep focus required" },
         },
         required: ["task_title", "member_name"],
       },
@@ -615,9 +616,10 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
         update((s) => {
           const t = s.tasks.find((x) => x.id === tId);
           if (!t) return s;
-          const existing = (t.scores || {})[mId] || { pleasure: 0, talent: 0 };
+          const existing = (t.scores || {})[mId] || { pleasure: 0, talent: 0, difficulty: 3 };
           if (args.pleasure !== undefined) existing.pleasure = clamp(args.pleasure, -3, 3);
           if (args.talent !== undefined) existing.talent = clamp(args.talent, -3, 3);
+          if (args.difficulty !== undefined) existing.difficulty = clamp(args.difficulty, 1, 5);
           existing.autoFilled = false;
           t.scores = t.scores || {};
           t.scores[mId] = existing;
@@ -627,8 +629,44 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
         return ok({
           task: th.item.title,
           member: mh.item.name,
-          score: { pleasure: after.pleasure, talent: after.talent, autoFilled: !!after.autoFilled },
+          score: { pleasure: after.pleasure, talent: after.talent, difficulty: after.difficulty ?? 3, autoFilled: !!after.autoFilled },
         });
+      },
+    },
+
+    {
+      name: "set_task_difficulty",
+      description:
+        "Shortcut: set the per-member difficulty (cognitive load) of a task. 1 = mindless, 3 = normal, 5 = needs deep focus. The scheduler matches high-difficulty tasks to high-concentration time windows.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          task_title: { type: "string" },
+          member_name: { type: "string" },
+          difficulty: { type: "integer", minimum: 1, maximum: 5 },
+        },
+        required: ["task_title", "member_name", "difficulty"],
+      },
+      execute: async (args) => {
+        const state = getState();
+        const th = findTask(state, args.task_title);
+        if (th.error) return err(th.error, { candidates: th.candidates });
+        const mh = findMember(state, args.member_name);
+        if (mh.error) return err(mh.error, { candidates: mh.candidates });
+        const tId = th.item.id;
+        const mId = mh.item.id;
+        update((s) => {
+          const t = s.tasks.find((x) => x.id === tId);
+          if (!t) return s;
+          const existing = (t.scores || {})[mId] || { pleasure: 0, talent: 0, difficulty: 3 };
+          existing.difficulty = clamp(args.difficulty, 1, 5);
+          existing.autoFilled = false;
+          t.scores = t.scores || {};
+          t.scores[mId] = existing;
+          return s;
+        });
+        return ok({ task: th.item.title, member: mh.item.name, difficulty: clamp(args.difficulty, 1, 5) });
       },
     },
 

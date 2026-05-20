@@ -858,7 +858,7 @@ function AppInner() {
       const id = "m" + Date.now();
       s.members.push({ id, name, capacity: 0, categoryScores: {}, availability: weekdayNineToFive(), windows: defaultWindows() });
       // initialize empty scores in each task
-      s.tasks.forEach(t => { t.scores[id] = { pleasure: 0, talent: 0 }; });
+      s.tasks.forEach(t => { t.scores[id] = { pleasure: 0, talent: 0, difficulty: 3 }; });
       return s;
     });
   };
@@ -879,7 +879,7 @@ function AppInner() {
       const scores = {};
       // New tasks start with autoFilled=true so the first category pick
       // can seed scores from each member's baseline.
-      s.members.forEach(m => { scores[m.id] = { pleasure: 0, talent: 0, autoFilled: true }; });
+      s.members.forEach(m => { scores[m.id] = { pleasure: 0, talent: 0, difficulty: 3, autoFilled: true }; });
       s.tasks.push({ id, title, categoryId: null, stakeholderId: null, urgency: 3, importance: 3, effort: 2, dueDate: null, scores });
       return s;
     });
@@ -1792,15 +1792,20 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                       <div style={{ ...mutedLabel, marginBottom: 8 }}>PER-MEMBER FIT</div>
                       <div style={{ display: "grid", gap: 10 }}>
                         {state.members.map(m => {
-                          const sc = t.scores[m.id] ?? { pleasure: 0, talent: 0 };
+                          const sc = t.scores[m.id] ?? { pleasure: 0, talent: 0, difficulty: 3 };
+                          const setField = (field, value) => update(st => {
+                            st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, [field]: value, autoFilled: false };
+                            return st;
+                          });
                           return (
                             <div key={m.id} style={{
-                              display: "grid", gridTemplateColumns: "minmax(80px, 100px) 1fr 1fr", gap: 12, alignItems: "center",
+                              display: "grid", gridTemplateColumns: "minmax(80px, 100px) 1fr 1fr 1fr", gap: 12, alignItems: "center",
                               padding: "8px 10px", background: "rgba(28,25,22,0.025)", borderRadius: 8,
                             }}>
                               <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600, fontSize: 14 }}>{m.name}</div>
-                              <Slider value={sc.pleasure} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, pleasure: v, autoFilled: false }; return st; })} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
-                              <Slider value={sc.talent} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).scores[m.id] = { ...sc, talent: v, autoFilled: false }; return st; })} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
+                              <Slider value={sc.pleasure} onChange={(v) => setField("pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
+                              <Slider value={sc.talent} onChange={(v) => setField("talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
+                              <Slider value={sc.difficulty ?? 3} onChange={(v) => setField("difficulty", v)} min={1} max={5} color={colors.ochre} label={<span><Zap size={9} style={{display:"inline"}}/> difficulty</span>} />
                             </div>
                           );
                         })}

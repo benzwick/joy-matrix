@@ -152,6 +152,26 @@ places work outside a member's available windows.
 
 ---
 
+## Difficulty (per-task, per-member)
+
+Each entry in `tasks[].scores[memberId]` carries an optional
+`difficulty` score on the 1–5 scale (1 = mindless busywork, 3 = normal,
+5 = needs deep focus). Stored alongside the existing `pleasure` and
+`talent` for that (task, member) pair. Defaults to 3 when unset.
+
+Crucially, difficulty is **per-member** — the same task can be deep
+work for one person and trivial for another. "Refactor auth" might be
+a 5 for someone new to the codebase and a 2 for someone who wrote it.
+
+The scheduler matches a task's difficulty (for its assigned member)
+against the **concentration** dimension of that member's daytime
+windows. High-difficulty tasks land in high-concentration slots.
+
+Set via `set_task_difficulty({ task_title, member_name, difficulty })`
+or `set_task_score` (which now also accepts `difficulty`).
+
+---
+
 ## Energy and concentration windows
 
 Each member also carries a day-agnostic energy + concentration curve
