@@ -1832,6 +1832,7 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
 
 function ScheduleView({ state, assignments }) {
   const isPhone = useViewportWidth() < 480;
+  const [viewMode, setViewMode] = useState("week");
   // Memoise on the state inputs so the algorithm doesn't re-run on
   // unrelated re-renders (theme changes, hover, etc.).
   const schedule = useMemo(
@@ -1841,30 +1842,10 @@ function ScheduleView({ state, assignments }) {
   );
   const totals = hoursPerMember(schedule);
 
-  // Members who have anything scheduled this week (skip empty lanes).
-  const scheduledMemberIds = new Set();
-  for (const blocks of Object.values(schedule.placements)) {
-    for (const b of blocks) scheduledMemberIds.add(b.memberId);
-  }
-  const swimLanes = state.members.filter(m => scheduledMemberIds.has(m.id));
-
-  // Day columns: 7 days starting from today.
-  const dayCols = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(schedule.weekStart.getTime() + i * 24 * 60 * 60 * 1000);
-    dayCols.push(d);
-  }
-  const dayLabel = (d) => d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-
-  // Index placements by member + day for fast lookup.
-  const placementsByMemberDay = {};
+  // Flatten placements into { taskId, ...block } records for sub-views.
+  const allBlocks = [];
   for (const [taskId, blocks] of Object.entries(schedule.placements)) {
-    for (const b of blocks) {
-      const from = new Date(b.from);
-      const key = `${b.memberId}|${from.getFullYear()}-${from.getMonth()}-${from.getDate()}`;
-      if (!placementsByMemberDay[key]) placementsByMemberDay[key] = [];
-      placementsByMemberDay[key].push({ ...b, taskId });
-    }
+    for (const b of blocks) allBlocks.push({ taskId, ...b });
   }
 
   return (
@@ -1873,6 +1854,7 @@ function ScheduleView({ state, assignments }) {
         eyebrow="04"
         title="The Schedule"
         sub="Tasks placed into real time, matched to each person's availability and energy curve."
+        action={<ScheduleViewSwitcher value={viewMode} onChange={setViewMode} />}
       />
 
       {schedule.conflicts.length > 0 && (
@@ -1894,28 +1876,333 @@ function ScheduleView({ state, assignments }) {
         </div>
       )}
 
-      {swimLanes.length === 0 && schedule.conflicts.length === 0 && (
+      {allBlocks.length === 0 && schedule.conflicts.length === 0 && (
         <Empty>
           Nothing scheduled. Tasks need an assigned member, a due date, and
           availability windows within the next 7 days.
         </Empty>
       )}
 
-      {swimLanes.length > 0 && (
-        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-          {swimLanes.map((m) => (
-            <ScheduleLane
-              key={m.id}
-              member={m}
-              dayCols={dayCols}
-              placementsByMemberDay={placementsByMemberDay}
-              tasks={state.tasks}
-              totalHours={totals[m.id] || 0}
-              isPhone={isPhone}
-            />
+      {viewMode === "week" && allBlocks.length > 0 && (
+        <ScheduleWeekView state={state} schedule={schedule} totals={totals} isPhone={isPhone} />
+      )}
+      {viewMode === "day" && (
+        <ScheduleDayView state={state} schedule={schedule} allBlocks={allBlocks} isPhone={isPhone} />
+      )}
+      {viewMode === "month" && (
+        <ScheduleMonthView state={state} schedule={schedule} allBlocks={allBlocks} />
+      )}
+      {viewMode === "year" && (
+        <ScheduleYearView allBlocks={allBlocks} />
+      )}
+    </div>
+  );
+}
+
+function ScheduleViewSwitcher({ value, onChange }) {
+  const opts = [["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]];
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      {opts.map(([k, label]) => (
+        <button
+          key={k}
+          onClick={() => onChange(k)}
+          style={{
+            ...btnGhost,
+            padding: "5px 10px", fontSize: 10,
+            ...(value === k ? { background: colors.teal, color: "#ffffff", borderColor: colors.teal } : {}),
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ScheduleWeekView({ state, schedule, totals, isPhone }) {
+  const scheduledMemberIds = new Set();
+  for (const blocks of Object.values(schedule.placements)) {
+    for (const b of blocks) scheduledMemberIds.add(b.memberId);
+  }
+  const swimLanes = state.members.filter(m => scheduledMemberIds.has(m.id));
+
+  const dayCols = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(schedule.weekStart.getTime() + i * 24 * 60 * 60 * 1000);
+    dayCols.push(d);
+  }
+
+  const placementsByMemberDay = {};
+  for (const [taskId, blocks] of Object.entries(schedule.placements)) {
+    for (const b of blocks) {
+      const from = new Date(b.from);
+      const key = `${b.memberId}|${from.getFullYear()}-${from.getMonth()}-${from.getDate()}`;
+      if (!placementsByMemberDay[key]) placementsByMemberDay[key] = [];
+      placementsByMemberDay[key].push({ ...b, taskId });
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+      {swimLanes.map((m) => (
+        <ScheduleLane
+          key={m.id}
+          member={m}
+          dayCols={dayCols}
+          placementsByMemberDay={placementsByMemberDay}
+          tasks={state.tasks}
+          totalHours={totals[m.id] || 0}
+          isPhone={isPhone}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Single-day stacked view: each member is a column, rows are 30-min
+// slots from earliest to latest availability across the day's blocks.
+function ScheduleDayView({ state, schedule, allBlocks, isPhone }) {
+  const [offset, setOffset] = useState(0);
+  const day = new Date(schedule.weekStart.getTime() + offset * 24 * 60 * 60 * 1000);
+  const dayBlocks = allBlocks.filter((b) => {
+    const from = new Date(b.from);
+    return from.getFullYear() === day.getFullYear()
+      && from.getMonth() === day.getMonth()
+      && from.getDate() === day.getDate();
+  });
+
+  // Member columns: only those with blocks today.
+  const memberIds = [...new Set(dayBlocks.map(b => b.memberId))];
+  const members = state.members.filter(m => memberIds.includes(m.id));
+
+  // Hour range: earliest start to latest end across today's blocks.
+  let minHour = 9;
+  let maxHour = 17;
+  if (dayBlocks.length) {
+    minHour = Math.min(...dayBlocks.map(b => new Date(b.from).getHours()));
+    maxHour = Math.max(...dayBlocks.map(b => new Date(b.to).getHours() + (new Date(b.to).getMinutes() > 0 ? 1 : 0)));
+  }
+  const rows = [];
+  for (let h = minHour; h < maxHour; h++) rows.push(h);
+
+  const tonesByQuadrant = {
+    DO: { fg: colors.rustDeep, bg: "rgba(184,73,42,0.10)" },
+    SCHEDULE: { fg: colors.teal, bg: "rgba(42,93,93,0.10)" },
+    DELEGATE: { fg: colors.ochre, bg: "rgba(201,138,44,0.12)" },
+    ELIMINATE: { fg: colors.inkSoft, bg: "rgba(28,25,22,0.06)" },
+  };
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <button onClick={() => setOffset(o => Math.max(0, o - 1))} style={btnGhost}>‹ prev</button>
+        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }}>
+          {day.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}
+        </div>
+        <button onClick={() => setOffset(o => Math.min(6, o + 1))} style={btnGhost}>next ›</button>
+      </div>
+      {members.length === 0 && <Empty>Nothing scheduled this day.</Empty>}
+      {members.length > 0 && (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: `60px repeat(${members.length}, 1fr)`,
+          gap: 4,
+          ...card,
+          padding: 10,
+        }}>
+          <div></div>
+          {members.map(m => (
+            <div key={m.id} style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 14, textAlign: "center" }}>
+              {m.name}
+            </div>
+          ))}
+          {rows.map(h => (
+            <React.Fragment key={h}>
+              <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, paddingTop: 4 }}>
+                {String(h).padStart(2, "0")}:00
+              </div>
+              {members.map(m => {
+                const hourBlocks = dayBlocks.filter(b => {
+                  const from = new Date(b.from);
+                  return b.memberId === m.id && from.getHours() === h;
+                });
+                return (
+                  <div key={m.id} style={{
+                    minHeight: 44, padding: 3, borderTop: `1px dashed ${colors.rule}`,
+                    display: "flex", flexDirection: "column", gap: 2,
+                  }}>
+                    {hourBlocks.map((b, i) => {
+                      const t = state.tasks.find(x => x.id === b.taskId);
+                      if (!t) return null;
+                      const tone = tonesByQuadrant[quadrantOf(t)] || tonesByQuadrant.ELIMINATE;
+                      const from = new Date(b.from);
+                      return (
+                        <div key={i} style={{
+                          padding: "3px 6px", borderRadius: 5,
+                          background: tone.bg, borderLeft: `3px solid ${tone.fg}`,
+                          fontSize: 11, color: colors.ink,
+                        }}>
+                          <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 9, color: tone.fg, marginRight: 4 }}>
+                            :{String(from.getMinutes()).padStart(2, "0")}
+                          </span>
+                          {t.title}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </React.Fragment>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Calendar-month grid. Each day cell shows total blocks + hours
+// across all members on that date.
+function ScheduleMonthView({ state, schedule, allBlocks }) {
+  const today = new Date();
+  const [monthOffset, setMonthOffset] = useState(0);
+  const monthAnchor = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+  const monthName = monthAnchor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+  // Build a Mon-first 6-row calendar grid.
+  const firstDay = new Date(monthAnchor);
+  const jsDow = firstDay.getDay();
+  const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow; // shift so Mon = 0
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() + mondayOffset);
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    cells.push(new Date(gridStart.getTime() + i * 24 * 60 * 60 * 1000));
+  }
+
+  // Aggregate hours + counts per day.
+  const dayStats = {};
+  for (const b of allBlocks) {
+    const from = new Date(b.from);
+    const key = `${from.getFullYear()}-${from.getMonth()}-${from.getDate()}`;
+    if (!dayStats[key]) dayStats[key] = { count: 0, hours: 0 };
+    dayStats[key].count += 1;
+    dayStats[key].hours += 0.5;
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <button onClick={() => setMonthOffset(o => o - 1)} style={btnGhost}>‹ prev</button>
+        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }}>{monthName}</div>
+        <button onClick={() => setMonthOffset(o => o + 1)} style={btnGhost}>next ›</button>
+      </div>
+      <div style={{ ...card, padding: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
+            <div key={d} style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.08em", textAlign: "center" }}>
+              {d.toUpperCase()}
+            </div>
+          ))}
+          {cells.map((d, i) => {
+            const inMonth = d.getMonth() === monthAnchor.getMonth();
+            const isToday = d.toDateString() === today.toDateString();
+            const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+            const stats = dayStats[key];
+            return (
+              <div key={i} style={{
+                minHeight: 68, padding: 6, borderRadius: 6,
+                background: stats ? "rgba(42,93,93,0.10)" : "rgba(28,25,22,0.025)",
+                border: isToday ? `1.5px solid ${colors.teal}` : `1px solid ${colors.rule}`,
+                opacity: inMonth ? 1 : 0.35,
+                display: "flex", flexDirection: "column", gap: 2,
+              }}>
+                <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, color: colors.inkSoft }}>{d.getDate()}</div>
+                {stats && (
+                  <div style={{ marginTop: "auto", fontSize: 11 }}>
+                    <div style={{ color: colors.teal, fontWeight: 600 }}>{stats.hours.toFixed(1)}h</div>
+                    <div style={{ color: colors.inkSoft, fontSize: 10 }}>{stats.count} block{stats.count === 1 ? "" : "s"}</div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Year heatmap: 53-week grid, 7 rows (Mon..Sun), each cell shaded by
+// total scheduled hours that day.
+function ScheduleYearView({ allBlocks }) {
+  const today = new Date();
+  // Anchor: start of the ISO-ish year (Jan 1's Monday).
+  const yearStart = new Date(today.getFullYear(), 0, 1);
+  const jsDow = yearStart.getDay();
+  const mondayOffset = jsDow === 0 ? -6 : 1 - jsDow;
+  const gridStart = new Date(yearStart);
+  gridStart.setDate(yearStart.getDate() + mondayOffset);
+
+  const dayHours = {};
+  for (const b of allBlocks) {
+    const from = new Date(b.from);
+    const key = `${from.getFullYear()}-${from.getMonth()}-${from.getDate()}`;
+    dayHours[key] = (dayHours[key] || 0) + 0.5;
+  }
+
+  const shadeFor = (hours) => {
+    if (!hours) return "rgba(28,25,22,0.06)";
+    if (hours < 2) return "rgba(58,168,154,0.20)";
+    if (hours < 4) return "rgba(58,168,154,0.40)";
+    if (hours < 6) return "rgba(58,168,154,0.65)";
+    return "rgba(58,168,154,0.90)";
+  };
+
+  // 53 weeks × 7 days.
+  const weeks = [];
+  for (let w = 0; w < 53; w++) {
+    const col = [];
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(gridStart.getTime() + (w * 7 + d) * 24 * 60 * 60 * 1000);
+      col.push(date);
+    }
+    weeks.push(col);
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ ...card, padding: 14, overflowX: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }}>
+            {today.getFullYear()}
+          </div>
+          <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 11, color: colors.inkSoft }}>
+            scheduled hours per day · {Object.values(dayHours).reduce((a, b) => a + b, 0).toFixed(1)}h total
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(53, 12px)`, gap: 2 }}>
+          {weeks.map((col, wi) => (
+            <div key={wi} style={{ display: "grid", gridTemplateRows: "repeat(7, 12px)", gap: 2 }}>
+              {col.map((d, di) => {
+                const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                const h = dayHours[key] || 0;
+                const inYear = d.getFullYear() === today.getFullYear();
+                return (
+                  <div key={di}
+                    title={`${d.toLocaleDateString()} — ${h.toFixed(1)}h`}
+                    style={{
+                      width: 12, height: 12, borderRadius: 2,
+                      background: inYear ? shadeFor(h) : "rgba(28,25,22,0.02)",
+                      border: `1px solid ${colors.rule}`,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
