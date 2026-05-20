@@ -1047,12 +1047,20 @@ function AppInner() {
             ["schedule","Schedule",Calendar],
             ["insights","Insights",Activity],
           ].map(([key, label, Icon]) => (
-            <button key={key} onClick={() => setTab(key)} style={{
-              ...tabBtn,
-              ...(tab === key ? tabBtnActive : {}),
-              ...(isPhone ? { padding: "6px 8px", fontSize: 10, gap: 4, flex: "0 1 auto" } : {}),
-            }}>
-              <Icon size={isPhone ? 12 : 13} /> {label}
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              title={label}
+              aria-label={label}
+              style={{
+                ...tabBtn,
+                ...(tab === key ? tabBtnActive : {}),
+                ...(isPhone ? { padding: "6px 8px", fontSize: 10, gap: 4, flex: "0 1 auto", justifyContent: "center" } : {}),
+              }}
+            >
+              <Icon size={isPhone ? 14 : 13} />
+              {!isPhone && <span>{label}</span>}
+              {isPhone && tab === key && <span>{label}</span>}
             </button>
           ))}
         </div>
@@ -1803,13 +1811,26 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                           });
                           return (
                             <div key={m.id} style={{
-                              display: "grid", gridTemplateColumns: "minmax(80px, 100px) 1fr 1fr 1fr", gap: 12, alignItems: "center",
+                              display: "grid",
+                              gridTemplateColumns: isPhone ? "1fr" : "minmax(80px, 100px) 1fr 1fr 1fr",
+                              gap: isPhone ? 6 : 12,
+                              alignItems: "center",
                               padding: "8px 10px", background: "rgba(28,25,22,0.025)", borderRadius: 8,
                             }}>
                               <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600, fontSize: 14 }}>{m.name}</div>
-                              <Slider value={sc.pleasure} onChange={(v) => setField("pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
-                              <Slider value={sc.talent} onChange={(v) => setField("talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
-                              <Slider value={sc.difficulty ?? 3} onChange={(v) => setField("difficulty", v)} min={1} max={5} color={colors.ochre} label={<span><Zap size={9} style={{display:"inline"}}/> difficulty</span>} />
+                              {isPhone ? (
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                                  <Slider value={sc.pleasure} onChange={(v) => setField("pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
+                                  <Slider value={sc.talent} onChange={(v) => setField("talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
+                                  <Slider value={sc.difficulty ?? 3} onChange={(v) => setField("difficulty", v)} min={1} max={5} color={colors.ochre} label={<span><Zap size={9} style={{display:"inline"}}/> difficulty</span>} />
+                                </div>
+                              ) : (
+                                <>
+                                  <Slider value={sc.pleasure} onChange={(v) => setField("pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
+                                  <Slider value={sc.talent} onChange={(v) => setField("talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
+                                  <Slider value={sc.difficulty ?? 3} onChange={(v) => setField("difficulty", v)} min={1} max={5} color={colors.ochre} label={<span><Zap size={9} style={{display:"inline"}}/> difficulty</span>} />
+                                </>
+                              )}
                             </div>
                           );
                         })}
@@ -2404,6 +2425,7 @@ function InsightsView({ state, summary, assignments }) {
 // availability (unused windows), and overschedule warnings (when a
 // person's placed blocks exceed their effort budget × 1.5h).
 function ScheduleInsights({ state, assignments, summary }) {
+  const isPhone = useViewportWidth() < 480;
   const schedule = useMemo(
     () => computeSchedule(state, assignments, new Date()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2424,25 +2446,43 @@ function ScheduleInsights({ state, assignments, summary }) {
   const anySched = rows.some(r => r.scheduledHours > 0);
   if (!anySched) return null;
 
+  const Stats = ({ r }) => (
+    <>
+      <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12 }}>
+        <span style={{ color: r.oversched ? colors.rustDeep : colors.teal, fontWeight: 600 }}>
+          {r.scheduledHours.toFixed(1)}h
+        </span>
+        <span style={{ color: colors.inkSoft }}> scheduled</span>
+      </div>
+      <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12, color: colors.inkSoft }}>
+        {r.idle.toFixed(1)}h idle
+      </div>
+      <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12, color: r.oversched ? colors.rustDeep : colors.inkSoft }}>
+        {r.oversched ? `⚠ over by ${(r.scheduledHours - r.budgetHours).toFixed(1)}h` : `budget ${r.budgetHours.toFixed(1)}h`}
+      </div>
+    </>
+  );
+
   return (
     <div style={{ ...card, marginTop: 14 }}>
       <div style={{ ...mutedLabel, marginBottom: 12 }}>THIS WEEK'S SCHEDULE</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: isPhone ? 14 : 10 }}>
         {rows.map(r => (
-          <div key={r.member.id} style={{ display: "grid", gridTemplateColumns: "minmax(80px, 100px) 1fr 1fr 1fr", gap: 10, alignItems: "baseline", fontSize: 13 }}>
+          <div key={r.member.id} style={{
+            display: "grid",
+            gridTemplateColumns: isPhone ? "1fr" : "minmax(80px, 100px) 1fr 1fr 1fr",
+            gap: isPhone ? 6 : 10,
+            alignItems: "baseline",
+            fontSize: 13,
+          }}>
             <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600 }}>{r.member.name}</div>
-            <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12 }}>
-              <span style={{ color: r.oversched ? colors.rustDeep : colors.teal, fontWeight: 600 }}>
-                {r.scheduledHours.toFixed(1)}h
-              </span>
-              <span style={{ color: colors.inkSoft }}> scheduled</span>
-            </div>
-            <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12, color: colors.inkSoft }}>
-              {r.idle.toFixed(1)}h idle
-            </div>
-            <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 12, color: r.oversched ? colors.rustDeep : colors.inkSoft }}>
-              {r.oversched ? `⚠ over by ${(r.scheduledHours - r.budgetHours).toFixed(1)}h` : `budget ${r.budgetHours.toFixed(1)}h`}
-            </div>
+            {isPhone ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8 }}>
+                <Stats r={r} />
+              </div>
+            ) : (
+              <Stats r={r} />
+            )}
           </div>
         ))}
       </div>
