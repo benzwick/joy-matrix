@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import JoyMatrixChat from "./talk2view/JoyMatrixChat";
 import { FUZZY_VALUES, FUZZY_LABELS, formatDueDate, isOverdue } from "./scheduling/dueDate";
+import { DAYS, DAY_LABELS, WEEKDAYS, weekdayNineToFive, normaliseRanges } from "./scheduling/availability";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types of intent
@@ -41,6 +42,15 @@ const DEMO_STATE = {
   members: [
     {
       id: "m1", name: "Maya", capacity: 2,
+      availability: {
+        mon: [{ from: "09:00", to: "17:00" }],
+        tue: [{ from: "09:00", to: "17:00" }],
+        wed: [{ from: "09:00", to: "17:00" }],
+        thu: [{ from: "09:00", to: "17:00" }],
+        fri: [{ from: "09:00", to: "15:00" }],
+        sat: [],
+        sun: [],
+      },
       categoryScores: {
         "c-eng": { pleasure: 1,  talent: 2  },
         "c-des": { pleasure: 3,  talent: 3  },
@@ -50,6 +60,15 @@ const DEMO_STATE = {
     },
     {
       id: "m2", name: "Jordan", capacity: 0,
+      availability: {
+        mon: [{ from: "10:00", to: "13:00" }, { from: "14:00", to: "19:00" }],
+        tue: [{ from: "10:00", to: "13:00" }, { from: "14:00", to: "19:00" }],
+        wed: [{ from: "10:00", to: "13:00" }, { from: "14:00", to: "19:00" }],
+        thu: [],
+        fri: [{ from: "10:00", to: "13:00" }, { from: "14:00", to: "19:00" }],
+        sat: [],
+        sun: [],
+      },
       categoryScores: {
         "c-eng": { pleasure: 3,  talent: 3  },
         "c-des": { pleasure: 1,  talent: 0  },
@@ -59,6 +78,15 @@ const DEMO_STATE = {
     },
     {
       id: "m3", name: "Sam", capacity: -1,
+      availability: {
+        mon: [{ from: "08:00", to: "12:00" }],
+        tue: [{ from: "08:00", to: "12:00" }],
+        wed: [{ from: "08:00", to: "12:00" }],
+        thu: [{ from: "08:00", to: "12:00" }],
+        fri: [{ from: "08:00", to: "12:00" }],
+        sat: [{ from: "10:00", to: "13:00" }],
+        sun: [],
+      },
       categoryScores: {
         "c-eng": { pleasure: -1, talent: -2 },
         "c-des": { pleasure: 1,  talent: 1  },
@@ -809,7 +837,7 @@ function AppInner() {
     if (!name) return;
     update(s => {
       const id = "m" + Date.now();
-      s.members.push({ id, name, capacity: 0, categoryScores: {} });
+      s.members.push({ id, name, capacity: 0, categoryScores: {}, availability: weekdayNineToFive() });
       // initialize empty scores in each task
       s.tasks.forEach(t => { t.scores[id] = { pleasure: 0, talent: 0 }; });
       return s;
@@ -1327,6 +1355,8 @@ function TeamView({ state, update, addMember, removeMember, summary }) {
 
               <MemberBaselines member={m} categories={state.categories || []} update={update} />
 
+              <MemberAvailability member={m} update={update} />
+
               {s && (
                 <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px dashed ${colors.rule}` }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -1405,6 +1435,121 @@ function MemberBaselines({ member, categories, update }) {
           <div style={{ fontFamily: "var(--joy-font-head)", fontStyle: "italic", fontSize: 11.5, color: colors.inkSoft, lineHeight: 1.4 }}>
             Baselines auto-fill task scores when a task is assigned a category. You can still override per task.
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Per-day availability windows editor. Collapsed by default; renders
+// 7 rows when open with inline HH:MM range editing.
+function MemberAvailability({ member, update }) {
+  const [open, setOpen] = useState(false);
+  const availability = member.availability || {};
+  const totalRanges = DAYS.reduce((n, d) => n + (availability[d]?.length || 0), 0);
+
+  const setDay = (day, ranges) => update(st => {
+    const m = st.members.find(x => x.id === member.id);
+    m.availability = m.availability || {};
+    m.availability[day] = normaliseRanges(ranges);
+    return st;
+  });
+
+  const fillWeekdays = () => update(st => {
+    const m = st.members.find(x => x.id === member.id);
+    m.availability = m.availability || {};
+    for (const d of DAYS) {
+      m.availability[d] = WEEKDAYS.includes(d) ? [{ from: "09:00", to: "17:00" }] : [];
+    }
+    return st;
+  });
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: "transparent", border: "none", padding: 0, cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 6, width: "100%",
+          fontFamily: "var(--joy-font-mono)", fontSize: 10, letterSpacing: "0.12em",
+          textTransform: "uppercase", color: colors.inkSoft,
+        }}
+        aria-expanded={open}
+      >
+        <span>AVAILABILITY {totalRanges > 0 && `· ${totalRanges} window${totalRanges === 1 ? "" : "s"}`}</span>
+        <span style={{ marginLeft: "auto", fontSize: 14 }}>{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+          <button onClick={fillWeekdays} style={{ ...btnGhost, alignSelf: "start", fontSize: 10, padding: "4px 10px" }}>
+            ⤺ weekdays 9–5
+          </button>
+          {DAYS.map(d => {
+            const ranges = availability[d] || [];
+            return (
+              <div key={d} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <span style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, minWidth: 28 }}>
+                  {DAY_LABELS[d]}
+                </span>
+                {ranges.length === 0 && (
+                  <span style={{ color: colors.inkSoft, fontStyle: "italic" }}>off</span>
+                )}
+                {ranges.map((r, i) => (
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <input
+                      type="time"
+                      value={r.from}
+                      onChange={(e) => {
+                        const next = ranges.map((x, j) => j === i ? { ...x, from: e.target.value } : x);
+                        setDay(d, next);
+                      }}
+                      style={{
+                        fontFamily: "var(--joy-font-mono)", fontSize: 11,
+                        padding: "2px 4px", borderRadius: 4,
+                        background: colors.paper, color: colors.ink,
+                        border: `1px solid ${colors.rule}`,
+                      }}
+                    />
+                    <span style={{ color: colors.inkSoft }}>–</span>
+                    <input
+                      type="time"
+                      value={r.to}
+                      onChange={(e) => {
+                        const next = ranges.map((x, j) => j === i ? { ...x, to: e.target.value } : x);
+                        setDay(d, next);
+                      }}
+                      style={{
+                        fontFamily: "var(--joy-font-mono)", fontSize: 11,
+                        padding: "2px 4px", borderRadius: 4,
+                        background: colors.paper, color: colors.ink,
+                        border: `1px solid ${colors.rule}`,
+                      }}
+                    />
+                    <button
+                      onClick={() => setDay(d, ranges.filter((_, j) => j !== i))}
+                      style={{ ...btnIcon, width: 18, height: 18 }}
+                      title="remove range"
+                    >
+                      <X size={10}/>
+                    </button>
+                  </span>
+                ))}
+                <button
+                  onClick={() => {
+                    const last = ranges[ranges.length - 1];
+                    const from = last ? last.to : "09:00";
+                    const toHour = Math.min(23, parseInt(from, 10) + 4);
+                    const to = `${String(toHour).padStart(2, "0")}:00`;
+                    setDay(d, [...ranges, { from, to }]);
+                  }}
+                  style={{ ...btnGhost, fontSize: 10, padding: "2px 6px", marginLeft: "auto" }}
+                  title="add range"
+                >
+                  + range
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

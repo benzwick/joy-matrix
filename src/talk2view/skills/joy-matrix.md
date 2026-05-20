@@ -126,6 +126,32 @@ weight.
 
 ---
 
+## Availability
+
+Each member has a per-day-of-week availability map:
+
+```
+availability: { mon: [{from: "09:00", to: "17:00"}], tue: [...], ... }
+```
+
+Keys are `mon..sun`, values are arrays of `{from, to}` HH:MM windows.
+Empty array = unavailable that day. A day key missing entirely is also
+treated as unavailable. Multiple ranges per day are allowed (e.g.
+morning + afternoon with a lunch break in between).
+
+Use the `set_member_availability` tool to edit. It accepts:
+
+- Array of `{from, to}` objects.
+- String shorthand: `"all_day"`, `"unavailable"`, or
+  `"09:00-12:00, 14:00-18:00"`.
+- The special value `"weekdays_9_5"` resets the whole week to
+  Mon–Fri 09:00–17:00 in one call (day parameter ignored).
+
+Availability is read by the scheduler in the Schedule tab — it never
+places work outside a member's available windows.
+
+---
+
 ## Due dates
 
 Optional per task. Two forms:

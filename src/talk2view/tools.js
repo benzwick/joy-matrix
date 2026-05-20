@@ -15,6 +15,7 @@
 import { PRESETS, buildExportEnvelope, quadrantOf } from "../App";
 import { clamp, findCategory, findMember, findStakeholder, findTask } from "./lookup";
 import { parseDueDateInput, formatDueDate, FUZZY_VALUES } from "../scheduling/dueDate";
+import { parseRangesInput, DAYS, normaliseRanges, weekdayNineToFive } from "../scheduling/availability";
 
 const VALID_TABS = new Set(["matrix", "team", "tasks", "insights"]);
 const VALID_MODES = new Set(["light", "dark"]);
@@ -36,6 +37,7 @@ function projectMember(m, summary) {
     talentFit: s ? s.talentIndex : 0,
     burnout: !!(s && s.burnout),
     strain: !!(s && s.strain),
+    availability: m.availability || null,
   };
 }
 
@@ -301,6 +303,54 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
           return s;
         });
         return ok({ name: hit.item.name, capacity: newCap });
+      },
+    },
+
+    {
+      name: "set_member_availability",
+      description:
+        "Set a member's availability for one day of the week. ranges accepts an array of {from,to} HH:MM windows, OR a string shorthand: \"all_day\", \"unavailable\", or comma-separated ranges like \"09:00-12:00, 14:00-18:00\". The literal \"weekdays_9_5\" fills Mon–Fri 09:00-17:00 and clears the weekend in one shot — in that case the day parameter is ignored.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          member_name: { type: "string" },
+          day: { type: "string", description: `One of: ${DAYS.join(", ")}. Ignored when ranges="weekdays_9_5".` },
+          ranges: {
+            description: "Array of {from,to} or string shorthand (see description).",
+          },
+        },
+        required: ["member_name"],
+      },
+      execute: async (args) => {
+        const hit = findMember(getState(), args.member_name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const id = hit.item.id;
+        if (args.ranges === "weekdays_9_5") {
+          update((s) => {
+            const m = s.members.find((x) => x.id === id);
+            if (m) m.availability = weekdayNineToFive();
+            return s;
+          });
+          return ok({ name: hit.item.name, availability: getState().members.find(m => m.id === id).availability });
+        }
+        if (!args.day || !DAYS.includes(args.day)) {
+          return err(`day must be one of: ${DAYS.join(", ")}.`);
+        }
+        const parsed = parseRangesInput(args.ranges);
+        if (!parsed.ok) return err(parsed.error);
+        update((s) => {
+          const m = s.members.find((x) => x.id === id);
+          if (!m) return s;
+          m.availability = m.availability || {};
+          m.availability[args.day] = normaliseRanges(parsed.ranges);
+          return s;
+        });
+        return ok({
+          name: hit.item.name,
+          day: args.day,
+          ranges: getState().members.find(m => m.id === id).availability[args.day],
+        });
       },
     },
 
