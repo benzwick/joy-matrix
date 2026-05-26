@@ -28,6 +28,15 @@ async function capture(locator: Locator, name: string) {
   await locator.screenshot({ path: `${OUT}/${name}.png`, animations: "disabled" });
 }
 
+// Full-viewport capture, for states whose own element is much narrower than a
+// tab view (e.g. an overlay panel). Capturing the viewport keeps every
+// screenshot a similar width so the docs render them at a consistent size
+// instead of upscaling a narrow element to fill the column.
+async function captureViewport(page: Page, name: string) {
+  await fs.mkdir(OUT, { recursive: true });
+  await page.screenshot({ path: `${OUT}/${name}.png`, animations: "disabled" });
+}
+
 test.describe("docs screenshots — static", () => {
   // Real fonts (blockExternal:false) so screenshots match the branded look.
   test.use({ seed: "demo", themeMode: "light", blockExternal: false });
@@ -51,7 +60,7 @@ test.describe("docs screenshots — static", () => {
 
     await app.locator('[data-testid^="toggle-baselines-"]').first().click();
     await settle(app);
-    await capture(app.locator('[data-testid^="member-card-"]').first(), "team-baselines");
+    await capture(app.locator("main").first(), "team-baselines");
   });
 
   test("tasks + editor", async ({ app }) => {
@@ -70,7 +79,7 @@ test.describe("docs screenshots — static", () => {
     await app.getByRole("button", { name: /customize/i }).click();
     await app.getByTestId("customize-panel").waitFor();
     await settle(app);
-    await capture(app.getByTestId("customize-panel"), "customize");
+    await captureViewport(app, "customize");
   });
 
   test("csv import dialog", async ({ app }) => {

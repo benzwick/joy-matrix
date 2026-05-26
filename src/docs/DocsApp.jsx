@@ -250,11 +250,15 @@ function Code({ children }) {
 
 function Figure({ name, caption, alt }) {
   const [failed, setFailed] = useState(false);
+  // Cap display width at the screenshot's captured CSS size (it's captured at
+  // 2× for retina) so a small element-screenshot is never upscaled/blurry;
+  // wide tab views still fill the column. Centered for a consistent look.
+  const [maxW, setMaxW] = useState(null);
   return (
-    <figure style={{ margin: "4px 0 20px" }}>
+    <figure style={{ margin: "4px 0 22px" }}>
       {failed ? (
         <div style={{
-          ...card, padding: "26px 16px", textAlign: "center",
+          ...card, padding: "26px 16px", textAlign: "center", maxWidth: 720, margin: "0 auto",
           color: colors.inkSoft, fontFamily: "var(--joy-font-mono)", fontSize: 11,
           letterSpacing: "0.06em", textTransform: "uppercase",
         }}>
@@ -265,10 +269,13 @@ function Figure({ name, caption, alt }) {
           src={shot(name)}
           alt={alt || caption}
           loading="lazy"
+          onLoad={(e) => setMaxW(Math.round(e.currentTarget.naturalWidth / 2))}
           onError={() => setFailed(true)}
           style={{
-            width: "100%", display: "block", borderRadius: 12,
-            border: `1px solid ${colors.rule}`, boxShadow: "0 8px 30px rgba(0,0,0,0.10)",
+            display: "block", width: "100%", height: "auto",
+            maxWidth: maxW ?? "100%", margin: "0 auto",
+            borderRadius: 12, border: `1px solid ${colors.rule}`,
+            boxShadow: "0 8px 30px rgba(0,0,0,0.10)",
           }}
         />
       )}
