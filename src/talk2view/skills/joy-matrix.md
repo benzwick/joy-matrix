@@ -302,7 +302,45 @@ swap fonts (heading / body / mono) via the Customize panel.
 - No multi-user collaboration in real time — it's a single-browser
   planning tool by design.
 - Export and import are JSON files; that's how a user shares a project
-  with a teammate.
+  with a teammate. A CSV importer is also available for bringing in
+  tasks from other project-management tools — see the next section.
+
+---
+
+## CSV import
+
+The header "import" button accepts CSV files in addition to JSON. When
+a CSV is picked, a modal opens that:
+
+1. **Auto-detects column meaning**. Each Joy-Matrix field — title,
+   due date, effort, urgency, importance, assignee, category,
+   stakeholder — is matched to the most likely source column using
+   header-name heuristics tuned for OpenProject, Linear, Jira, Asana,
+   Trello, Notion, GitHub Issues, ClickUp, Monday, and Todoist. The
+   user can override any pick.
+2. **Coerces values.** Priority strings (`Urgent`/`High`/`Normal`/
+   `Low`) map to 1–5; story points and hour estimates (`16h`, `3d`,
+   `PT2H30M`, raw numbers) bucket to the 1–5 effort scale; due-date
+   cells accept ISO datetimes *and* the same fuzzy labels used by
+   `set_task_due_date` (`today`, `this-week`, etc.).
+3. **Optionally creates referenced members, categories, and
+   stakeholders.** Each opt-in is a checkbox; the modal shows the
+   names that would be created.
+4. **Previews up to five drafts**, lists row-level warnings (empty
+   titles, unknown assignees), and offers append-or-replace.
+5. **Honours the imported assignee softly.** Each imported task gets
+   talent = +2 for its named assignee, biasing the existing
+   assignment algorithm toward keeping that assignment without
+   hard-pinning it. The user can rebalance afterwards on the Tasks
+   tab.
+
+If `urgency` is mapped but `importance` isn't, the importer copies
+urgency into importance so the task lands in DO/DELEGATE based on the
+single priority dimension most PM tools expose.
+
+The CSV importer is interactive only — there is no Talk2View tool for
+it. To programmatically add a task, use `add_task` and then the
+existing per-field setters.
 
 ---
 
