@@ -65,7 +65,7 @@ function projectTask(t, state, assignments) {
 }
 
 export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setTheme, loadDemo, clearProject }) {
-  return [
+  const tools = [
     {
       name: "summarize_project",
       description:
@@ -492,7 +492,7 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
         properties: {
           task_title: { type: "string" },
           due_date: {
-            type: ["string", "null"],
+            type: "string",
             description: `One of: ${FUZZY_VALUES.join(", ")}; an ISO datetime; "none" to clear.`,
           },
         },
@@ -972,4 +972,11 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
       },
     },
   ];
+  // OpenAI strict function-calling requires additionalProperties:false on every
+  // parameter schema; the SDK forwards `parameters` to the engine verbatim, so
+  // set it here for all tools rather than repeating it on each definition.
+  return tools.map((t) => ({
+    ...t,
+    parameters: { ...t.parameters, additionalProperties: false },
+  }));
 }

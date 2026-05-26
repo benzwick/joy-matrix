@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Talk2View, ChatWidget, useTalk2View } from "@talk2view/sdk/ui";
+import { Talk2View, ChatWidget } from "@talk2view/sdk/ui";
+import { useT2V, useT2VTools } from "@talk2view/sdk/react";
 import systemPrompt from "./system-prompt.md?raw";
 import joyMatrixSkill from "./skills/joy-matrix.md?raw";
 import { buildJoyMatrixTools } from "./tools";
@@ -72,7 +73,8 @@ export default function JoyMatrixChat({
   );
 
   return (
-    <Talk2View partnerKey={PARTNER_KEY} systemPrompt={systemPrompt} tools={tools}>
+    <Talk2View partnerKey={PARTNER_KEY} systemPrompt={systemPrompt}>
+      <ToolRegistrar tools={tools} />
       <SkillBootstrap />
       <div onClick={dismiss}>
         <ChatWidget welcome={{ heading: "Ask The Joy Matrix", suggestions: SUGGESTIONS }} />
@@ -82,18 +84,37 @@ export default function JoyMatrixChat({
   );
 }
 
-// Registers our domain skills with the SDK once per session.
-function SkillBootstrap() {
-  const { t2v } = useTalk2View();
-  const registered = useRef(false);
+// Register tools (and skills, below) only AFTER the user is authenticated.
+//
+// The prebuilt `<Talk2View tools={...}>` prop registers tools in a useEffect
+// keyed on [t2v, tools] (SDK 0.5.0, dist/ui/components/Talk2View.js): it fires
+// once on mount — before login — so the call 401s, the error is swallowed, and
+// it never re-runs after auth. The engine ends up with no tools and the model
+// can't call any. Registering here via the headless hooks, gated on
+// isAuthenticated, is the pattern that actually works (see the OHIF integration).
+function ToolRegistrar({ tools }) {
+  const { isAuthenticated } = useT2V();
+  const { registerTools, isRegistered } = useT2VTools();
   useEffect(() => {
-    if (!t2v || registered.current) return;
-    registered.current = true;
+    if (!isAuthenticated || isRegistered) return;
+    registerTools(tools).catch((err) => {
+      console.warn("[joy-matrix] tool registration failed:", err);
+    });
+  }, [isAuthenticated, isRegistered, registerTools, tools]);
+  return null;
+}
+
+// Skills are session-scoped on the server too, so register them once the user
+// is authenticated rather than once on mount.
+function SkillBootstrap() {
+  const { t2v, isAuthenticated } = useT2V();
+  useEffect(() => {
+    if (!isAuthenticated || !t2v) return;
     for (const s of SKILLS) t2v.skills.add(s);
     t2v.skills.register(SKILLS).catch((err) => {
       console.warn("[joy-matrix] skill registration failed:", err);
     });
-  }, [t2v]);
+  }, [isAuthenticated, t2v]);
   return null;
 }
 
