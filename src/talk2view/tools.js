@@ -1025,8 +1025,18 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
         const section = DOC_SECTIONS.includes(raw) ? raw : "";
         const base = import.meta.env.BASE_URL || "/";
         const url = `${base}docs/${section ? "#" + section : ""}`;
-        if (typeof window !== "undefined") window.location.assign(url);
-        return ok({ url, section: section || "overview" });
+        if (typeof window !== "undefined") {
+          if (window.location.pathname.includes("/docs") && section) {
+            // Already on the docs page — just scroll, don't reload (which would
+            // unmount and clear the chat).
+            window.location.hash = section;
+          } else {
+            // Open in a new tab so the app and the live chat session stay intact
+            // instead of navigating away from them.
+            window.open(url, "_blank", "noopener");
+          }
+        }
+        return ok({ url, section: section || "overview", opened: "new tab" });
       },
     },
 
