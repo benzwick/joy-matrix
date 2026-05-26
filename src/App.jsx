@@ -1242,6 +1242,7 @@ function AppInner() {
           </span>
           <span>"software you can talk to…"</span>
         </a>
+        <div>© 2026 Benny Zwick. All rights reserved.</div>
       </footer>
 
       {customizeOpen && <CustomizePanel onClose={() => setCustomizeOpen(false)} />}
