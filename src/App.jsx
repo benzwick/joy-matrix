@@ -605,7 +605,7 @@ function CustomizePanel({ onClose }) {
   const fontPreview = { head: "Aa Heading", body: "Body sentence.", mono: "mono 0123" };
   const fontSlotLabel = { head: "Heading", body: "Body", mono: "Mono" };
   return (
-    <div style={{
+    <div data-testid="customize-panel" style={{
       position: "fixed", top: 16, right: 16, zIndex: 50,
       width: isPhone ? "auto" : 280,
       left: isPhone ? 16 : "auto",
@@ -625,6 +625,7 @@ function CustomizePanel({ onClose }) {
 
       <div style={{ ...mutedLabel, marginBottom: 6 }}>THEME</div>
       <select
+        data-testid="theme-preset"
         value={theme.themeId}
         onChange={(e) => switchTheme(e.target.value)}
         style={{
@@ -663,6 +664,7 @@ function CustomizePanel({ onClose }) {
               }} title="Pick a color">
                 <input
                   type="color"
+                  data-testid={`color-${slot.label.toLowerCase()}`}
                   value={current}
                   onChange={(e) => setSlot(slot.key, e.target.value)}
                   style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", border: "none" }}
@@ -673,7 +675,7 @@ function CustomizePanel({ onClose }) {
                 <div style={{ fontFamily: "var(--joy-font-mono)", fontSize: 10, color: colors.inkSoft, letterSpacing: "0.06em" }}>{slot.sub} · {current}</div>
               </div>
               {isOverridden && (
-                <button onClick={() => resetSlot(slot.key)} style={btnIcon} title="Reset to preset">
+                <button onClick={() => resetSlot(slot.key)} style={btnIcon} title="Reset to preset" data-testid={`color-reset-${slot.label.toLowerCase()}`}>
                   <RotateCcw size={12}/>
                 </button>
               )}
@@ -695,6 +697,7 @@ function CustomizePanel({ onClose }) {
                 {fontSlotLabel[slot]}
               </span>
               <select
+                data-testid={`font-${slot}`}
                 value={fonts[slot]}
                 onChange={(e) => setFont(slot, e.target.value)}
                 style={{
@@ -783,7 +786,7 @@ function Pill({ children, tone = "ink" }) {
   );
 }
 
-function Slider({ value, onChange, min, max, step = 1, color = colors.ink, label }) {
+function Slider({ value, onChange, min, max, step = 1, color = colors.ink, label, testId }) {
   const pct = ((value - min) / (max - min)) * 100;
   return (
     <div style={{ width: "100%" }}>
@@ -793,6 +796,7 @@ function Slider({ value, onChange, min, max, step = 1, color = colors.ink, label
       </div>
       <input
         type="range" min={min} max={max} step={step} value={value}
+        data-testid={testId}
         onChange={(e) => onChange(Number(e.target.value))}
         style={{
           width: "100%", height: 4, borderRadius: 999, appearance: "none",
@@ -1401,7 +1405,7 @@ function Legend() {
         </div>
       </div>
       <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-        <button onClick={() => setExpanded(v => !v)} style={{
+        <button data-testid="legend-toggle" onClick={() => setExpanded(v => !v)} style={{
           background: "transparent", border: "none", cursor: "pointer",
           color: colors.teal, fontFamily: "var(--joy-font-mono)", fontSize: 11,
           letterSpacing: "0.1em", textTransform: "uppercase", padding: "2px 4px",
@@ -1454,14 +1458,15 @@ function TeamView({ state, update, addMember, removeMember, summary }) {
         {state.members.map(m => {
           const s = summary.find(x => x.memberId === m.id);
           return (
-            <div key={m.id} style={card}>
+            <div key={m.id} data-testid={`member-card-${m.id}`} style={card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 }}>
                 <input
                   value={m.name}
+                  data-testid={`member-name-${m.id}`}
                   onChange={(e) => update(st => { st.members.find(x => x.id === m.id).name = e.target.value; return st; })}
                   style={{ ...inputBare, fontFamily: "var(--joy-font-head)", fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em", padding: 0 }}
                 />
-                <button onClick={() => removeMember(m.id)} style={btnIcon} title="remove"><X size={14}/></button>
+                <button onClick={() => removeMember(m.id)} style={btnIcon} title="remove" data-testid={`member-remove-${m.id}`}><X size={14}/></button>
               </div>
 
               <div style={{ marginTop: 12 }}>
@@ -1473,6 +1478,7 @@ function TeamView({ state, update, addMember, removeMember, summary }) {
                   value={m.capacity}
                   onChange={(v) => update(st => { st.members.find(x => x.id === m.id).capacity = v; return st; })}
                   min={-3} max={3} color={colors.teal} label={capacityWord(m.capacity)}
+                  testId={`member-capacity-${m.id}`}
                 />
               </div>
 
@@ -1529,6 +1535,7 @@ function MemberBaselines({ member, categories, update }) {
     <div style={{ marginTop: 14 }}>
       <button
         onClick={() => setOpen(o => !o)}
+        data-testid={`toggle-baselines-${member.id}`}
         style={{
           background: "transparent", border: "none", padding: 0, cursor: "pointer",
           display: "flex", alignItems: "center", gap: 6, width: "100%",
@@ -1551,8 +1558,8 @@ function MemberBaselines({ member, categories, update }) {
               }}>
                 <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600, fontSize: 13 }}>{c.name}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <Slider value={sc.pleasure} onChange={(v) => setScore(c.id, "pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
-                  <Slider value={sc.talent} onChange={(v) => setScore(c.id, "talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
+                  <Slider value={sc.pleasure} onChange={(v) => setScore(c.id, "pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} testId={`baseline-${member.id}-${c.id}-pleasure`} />
+                  <Slider value={sc.talent} onChange={(v) => setScore(c.id, "talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} testId={`baseline-${member.id}-${c.id}-talent`} />
                 </div>
               </div>
             );
@@ -1593,6 +1600,7 @@ function MemberAvailability({ member, update }) {
     <div style={{ marginTop: 14 }}>
       <button
         onClick={() => setOpen(o => !o)}
+        data-testid={`toggle-availability-${member.id}`}
         style={{
           background: "transparent", border: "none", padding: 0, cursor: "pointer",
           display: "flex", alignItems: "center", gap: 6, width: "100%",
@@ -1606,7 +1614,7 @@ function MemberAvailability({ member, update }) {
       </button>
       {open && (
         <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-          <button onClick={fillWeekdays} style={{ ...btnGhost, alignSelf: "start", fontSize: 10, padding: "4px 10px" }}>
+          <button onClick={fillWeekdays} data-testid={`avail-${member.id}-fill-weekdays`} style={{ ...btnGhost, alignSelf: "start", fontSize: 10, padding: "4px 10px" }}>
             ⤺ weekdays 9–5
           </button>
           {DAYS.map(d => {
@@ -1623,6 +1631,7 @@ function MemberAvailability({ member, update }) {
                   <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                     <input
                       type="time"
+                      data-testid={`avail-${member.id}-${d}-from-${i}`}
                       value={r.from}
                       onChange={(e) => {
                         const next = ranges.map((x, j) => j === i ? { ...x, from: e.target.value } : x);
@@ -1638,6 +1647,7 @@ function MemberAvailability({ member, update }) {
                     <span style={{ color: colors.inkSoft }}>–</span>
                     <input
                       type="time"
+                      data-testid={`avail-${member.id}-${d}-to-${i}`}
                       value={r.to}
                       onChange={(e) => {
                         const next = ranges.map((x, j) => j === i ? { ...x, to: e.target.value } : x);
@@ -1654,6 +1664,7 @@ function MemberAvailability({ member, update }) {
                       onClick={() => setDay(d, ranges.filter((_, j) => j !== i))}
                       style={{ ...btnIcon, width: 18, height: 18 }}
                       title="remove range"
+                      data-testid={`avail-${member.id}-${d}-remove-${i}`}
                     >
                       <X size={10}/>
                     </button>
@@ -1669,6 +1680,7 @@ function MemberAvailability({ member, update }) {
                   }}
                   style={{ ...btnGhost, fontSize: 10, padding: "2px 6px", marginLeft: "auto" }}
                   title="add range"
+                  data-testid={`avail-${member.id}-${d}-add`}
                 >
                   + range
                 </button>
@@ -1707,6 +1719,7 @@ function MemberWindows({ member, update }) {
     <div style={{ marginTop: 14 }}>
       <button
         onClick={() => setOpen(o => !o)}
+        data-testid={`toggle-windows-${member.id}`}
         style={{
           background: "transparent", border: "none", padding: 0, cursor: "pointer",
           display: "flex", alignItems: "center", gap: 6, width: "100%",
@@ -1735,12 +1748,14 @@ function MemberWindows({ member, update }) {
                   onChange={(v) => setBucket(bucket, "energy", v)}
                   min={1} max={3} color={colors.rust}
                   label={<span><Zap size={9} style={{display:"inline"}}/> {SCORE_LABELS[w.energy]}</span>}
+                  testId={`window-${member.id}-${bucket}-energy`}
                 />
                 <Slider
                   value={w.concentration}
                   onChange={(v) => setBucket(bucket, "concentration", v)}
                   min={1} max={3} color={colors.teal}
                   label={<span><Brain size={9} style={{display:"inline"}}/> {SCORE_LABELS[w.concentration]}</span>}
+                  testId={`window-${member.id}-${bucket}-concentration`}
                 />
               </div>
             );
@@ -1799,11 +1814,12 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
           const assignee = a ? state.members.find(m => m.id === a.memberId) : null;
           const q = quadrantOf(t);
           return (
-            <div key={t.id} style={card}>
+            <div key={t.id} data-testid={`task-card-${t.id}`} style={card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: isPhone ? 4 : 8 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <input
                     value={t.title}
+                    data-testid={`task-title-${t.id}`}
                     onChange={(e) => update(st => { st.tasks.find(x => x.id === t.id).title = e.target.value; return st; })}
                     style={{ ...inputBare, fontFamily: "var(--joy-font-head)", fontSize: isPhone ? 16 : 18, fontWeight: 600, letterSpacing: "-0.01em", padding: 0 }}
                   />
@@ -1820,11 +1836,12 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                     style={isPhone ? btnIcon : btnGhost}
                     title={isOpen ? "Close editor" : "Edit task"}
                     aria-label={isOpen ? "Close editor" : "Edit task"}
+                    data-testid={`task-edit-${t.id}`}
                   >
                     {isPhone ? (isOpen ? <X size={14}/> : "✎") : (isOpen ? "close" : "edit")}
                   </button>
-                  {!isPhone && <button onClick={() => removeTask(t.id)} style={btnIcon}><X size={14}/></button>}
-                  {isPhone && !isOpen && <button onClick={() => removeTask(t.id)} style={btnIcon} title="Delete task" aria-label="Delete task"><Trash2 size={13}/></button>}
+                  {!isPhone && <button onClick={() => removeTask(t.id)} style={btnIcon} title="Delete task" aria-label="Delete task" data-testid={`task-delete-${t.id}`}><X size={14}/></button>}
+                  {isPhone && !isOpen && <button onClick={() => removeTask(t.id)} style={btnIcon} title="Delete task" aria-label="Delete task" data-testid={`task-delete-${t.id}`}><Trash2 size={13}/></button>}
                 </div>
               </div>
 
@@ -1842,6 +1859,7 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={mutedLabel}>CATEGORY</span>
                           <select
+                            data-testid="task-category"
                             value={t.categoryId || ""}
                             onChange={(e) => setTaskCategory(t.id, e.target.value || null)}
                             style={{
@@ -1860,6 +1878,7 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={mutedLabel}>FOR</span>
                           <select
+                            data-testid="task-stakeholder"
                             value={t.stakeholderId || ""}
                             onChange={(e) => update(st => { st.tasks.find(x => x.id === t.id).stakeholderId = e.target.value || null; return st; })}
                             style={{
@@ -1886,9 +1905,9 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                     onChange={(next) => update(st => { st.tasks.find(x => x.id === t.id).dueDate = next; return st; })}
                   />
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
-                    <Slider value={t.urgency} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).urgency = v; return st; })} min={1} max={5} color={colors.rustDeep} label="urgency" />
-                    <Slider value={t.importance} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).importance = v; return st; })} min={1} max={5} color={colors.teal} label="importance" />
-                    <Slider value={t.effort} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).effort = v; return st; })} min={1} max={5} color={colors.ochre} label="effort" />
+                    <Slider value={t.urgency} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).urgency = v; return st; })} min={1} max={5} color={colors.rustDeep} label="urgency" testId="task-urgency" />
+                    <Slider value={t.importance} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).importance = v; return st; })} min={1} max={5} color={colors.teal} label="importance" testId="task-importance" />
+                    <Slider value={t.effort} onChange={(v) => update(st => { st.tasks.find(x => x.id === t.id).effort = v; return st; })} min={1} max={5} color={colors.ochre} label="effort" testId="task-effort" />
                   </div>
 
                   {state.members.length > 0 && (
@@ -1912,15 +1931,15 @@ function TasksView({ state, update, addTask, removeTask, editing, setEditing, as
                               <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 600, fontSize: 14 }}>{m.name}</div>
                               {isPhone ? (
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                                  <Slider value={sc.pleasure} onChange={(v) => setField("pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
-                                  <Slider value={sc.talent} onChange={(v) => setField("talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
-                                  <Slider value={sc.difficulty ?? 3} onChange={(v) => setField("difficulty", v)} min={1} max={5} color={colors.ochre} label={<span><Zap size={9} style={{display:"inline"}}/> difficulty</span>} />
+                                  <Slider value={sc.pleasure} onChange={(v) => setField("pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} testId={`task-fit-${m.id}-pleasure`} />
+                                  <Slider value={sc.talent} onChange={(v) => setField("talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} testId={`task-fit-${m.id}-talent`} />
+                                  <Slider value={sc.difficulty ?? 3} onChange={(v) => setField("difficulty", v)} min={1} max={5} color={colors.ochre} label={<span><Zap size={9} style={{display:"inline"}}/> difficulty</span>} testId={`task-fit-${m.id}-difficulty`} />
                                 </div>
                               ) : (
                                 <>
-                                  <Slider value={sc.pleasure} onChange={(v) => setField("pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} />
-                                  <Slider value={sc.talent} onChange={(v) => setField("talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} />
-                                  <Slider value={sc.difficulty ?? 3} onChange={(v) => setField("difficulty", v)} min={1} max={5} color={colors.ochre} label={<span><Zap size={9} style={{display:"inline"}}/> difficulty</span>} />
+                                  <Slider value={sc.pleasure} onChange={(v) => setField("pleasure", v)} min={-3} max={3} color={colors.rust} label={<span><Heart size={9} style={{display:"inline"}}/> pleasure</span>} testId={`task-fit-${m.id}-pleasure`} />
+                                  <Slider value={sc.talent} onChange={(v) => setField("talent", v)} min={-3} max={3} color={colors.teal} label={<span><Brain size={9} style={{display:"inline"}}/> talent</span>} testId={`task-fit-${m.id}-talent`} />
+                                  <Slider value={sc.difficulty ?? 3} onChange={(v) => setField("difficulty", v)} min={1} max={5} color={colors.ochre} label={<span><Zap size={9} style={{display:"inline"}}/> difficulty</span>} testId={`task-fit-${m.id}-difficulty`} />
                                 </>
                               )}
                             </div>
@@ -2019,6 +2038,7 @@ function ScheduleViewSwitcher({ value, onChange }) {
       {opts.map(([k, label]) => (
         <button
           key={k}
+          data-testid={`schedule-view-${k}`}
           onClick={() => onChange(k)}
           style={{
             ...btnGhost,
@@ -2109,11 +2129,11 @@ function ScheduleDayView({ state, schedule, allBlocks, isPhone }) {
   return (
     <div style={{ marginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <button onClick={() => setOffset(o => Math.max(0, o - 1))} style={btnGhost}>‹ prev</button>
-        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }}>
+        <button onClick={() => setOffset(o => Math.max(0, o - 1))} style={btnGhost} data-testid="schedule-prev">‹ prev</button>
+        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }} data-testid="schedule-day-label">
           {day.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}
         </div>
-        <button onClick={() => setOffset(o => Math.min(6, o + 1))} style={btnGhost}>next ›</button>
+        <button onClick={() => setOffset(o => Math.min(6, o + 1))} style={btnGhost} data-testid="schedule-next">next ›</button>
       </div>
       {members.length === 0 && <Empty>Nothing scheduled this day.</Empty>}
       {members.length > 0 && (
@@ -2206,9 +2226,9 @@ function ScheduleMonthView({ state, schedule, allBlocks }) {
   return (
     <div style={{ marginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <button onClick={() => setMonthOffset(o => o - 1)} style={btnGhost}>‹ prev</button>
-        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }}>{monthName}</div>
-        <button onClick={() => setMonthOffset(o => o + 1)} style={btnGhost}>next ›</button>
+        <button onClick={() => setMonthOffset(o => o - 1)} style={btnGhost} data-testid="schedule-prev">‹ prev</button>
+        <div style={{ fontFamily: "var(--joy-font-head)", fontWeight: 700, fontSize: 18 }} data-testid="schedule-month-label">{monthName}</div>
+        <button onClick={() => setMonthOffset(o => o + 1)} style={btnGhost} data-testid="schedule-next">next ›</button>
       </div>
       <div style={{ ...card, padding: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
@@ -2685,25 +2705,25 @@ function CategoriesBar({ state, update }) {
         </span>
       )}
       {categories.map(c => (
-        <span key={c.id} style={{
+        <span key={c.id} data-testid={`category-chip-${c.id}`} style={{
           display: "inline-flex", alignItems: "center", gap: 4,
           padding: "4px 4px 4px 10px", borderRadius: 999,
           background: "rgba(28,25,22,0.05)", border: `1px solid ${colors.rule}`,
           fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.04em",
           color: colors.ink,
         }}>
-          <button onClick={() => renameCategory(c.id, c.name)} title="Rename" style={{
+          <button onClick={() => renameCategory(c.id, c.name)} title="Rename" data-testid={`category-rename-${c.id}`} style={{
             background: "transparent", border: "none", color: "inherit",
             font: "inherit", letterSpacing: "inherit", cursor: "pointer", padding: 0,
           }}>{c.name}</button>
-          <button onClick={() => removeCategory(c.id)} title="Delete" style={{
+          <button onClick={() => removeCategory(c.id)} title="Delete" data-testid={`category-remove-${c.id}`} style={{
             display: "inline-flex", alignItems: "center", justifyContent: "center",
             width: 18, height: 18, borderRadius: 999, border: "none",
             background: "transparent", color: colors.inkSoft, cursor: "pointer",
           }}><X size={10}/></button>
         </span>
       ))}
-      <button onClick={addCategory} style={{
+      <button onClick={addCategory} data-testid="add-category" style={{
         ...btnGhost, padding: "4px 10px",
       }}><Plus size={11}/> add category</button>
     </div>
@@ -2750,25 +2770,25 @@ function StakeholdersBar({ state, update }) {
         </span>
       )}
       {stakeholders.map(x => (
-        <span key={x.id} style={{
+        <span key={x.id} data-testid={`stakeholder-chip-${x.id}`} style={{
           display: "inline-flex", alignItems: "center", gap: 4,
           padding: "4px 4px 4px 10px", borderRadius: 999,
           background: "rgba(42,93,93,0.07)", border: `1px solid rgba(42,93,93,0.25)`,
           fontFamily: "var(--joy-font-mono)", fontSize: 11, letterSpacing: "0.04em",
           color: colors.teal,
         }}>
-          <button onClick={() => rename(x.id, x.name)} title="Rename" style={{
+          <button onClick={() => rename(x.id, x.name)} title="Rename" data-testid={`stakeholder-rename-${x.id}`} style={{
             background: "transparent", border: "none", color: "inherit",
             font: "inherit", letterSpacing: "inherit", cursor: "pointer", padding: 0,
           }}>{x.name}</button>
-          <button onClick={() => remove(x.id)} title="Delete" style={{
+          <button onClick={() => remove(x.id)} title="Delete" data-testid={`stakeholder-remove-${x.id}`} style={{
             display: "inline-flex", alignItems: "center", justifyContent: "center",
             width: 18, height: 18, borderRadius: 999, border: "none",
             background: "transparent", color: colors.inkSoft, cursor: "pointer",
           }}><X size={10}/></button>
         </span>
       ))}
-      <button onClick={add} style={{ ...btnGhost, padding: "4px 10px" }}><Plus size={11}/> add stakeholder</button>
+      <button onClick={add} data-testid="add-stakeholder" style={{ ...btnGhost, padding: "4px 10px" }}><Plus size={11}/> add stakeholder</button>
     </div>
   );
 }
@@ -2816,6 +2836,7 @@ function DueDatePicker({ value, onChange }) {
         ].map(([key, label]) => (
           <button
             key={key}
+            data-testid={`task-duedate-mode-${key}`}
             onClick={() => {
               if (key === "none") onChange(null);
               else if (key === "fuzzy") onChange({ kind: "fuzzy", value: value?.kind === "fuzzy" ? value.value : "today" });
@@ -2833,6 +2854,7 @@ function DueDatePicker({ value, onChange }) {
       </div>
       {mode === "fuzzy" && (
         <select
+          data-testid="task-duedate-fuzzy"
           value={value.value}
           onChange={(e) => onChange({ kind: "fuzzy", value: e.target.value })}
           style={{
@@ -2848,6 +2870,7 @@ function DueDatePicker({ value, onChange }) {
       {mode === "exact" && (
         <input
           type="datetime-local"
+          data-testid="task-duedate-exact"
           value={(() => {
             // datetime-local wants "YYYY-MM-DDTHH:mm" without timezone
             const d = new Date(value.value);
