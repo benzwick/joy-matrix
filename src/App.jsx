@@ -10,6 +10,7 @@ import { FUZZY_VALUES, FUZZY_LABELS, formatDueDate, isOverdue } from "./scheduli
 import { DAYS, DAY_LABELS, WEEKDAYS, weekdayNineToFive, normaliseRanges, weeklyAvailableHours } from "./scheduling/availability";
 import { DAYTIMES, DAYTIME_LABELS, SCORE_LABELS, defaultWindows } from "./scheduling/windows";
 import { computeSchedule, hoursPerMember } from "./scheduling/schedule";
+import CsvImportModal from "./import/CsvImportModal";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types of intent
@@ -823,6 +824,7 @@ function AppInner() {
   const isDark = theme.mode === "dark";
   const toggleMode = () => setTheme(t => ({ ...t, mode: t.mode === "dark" ? "light" : "dark" }));
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [csvImport, setCsvImport] = useState(null); // { rawText, filename } | null
   const fileInputRef = React.useRef(null);
   const vw = useViewportWidth();
   const isPhone = vw < 480;
@@ -936,10 +938,91 @@ function AppInner() {
     e.target.value = ""; // allow re-importing the same filename later
     if (!file) return;
     const raw = await file.text();
+    const isCsv = /\.csv$/i.test(file.name)
+      || file.type === "text/csv"
+      || (!file.name.toLowerCase().endsWith(".json") && !raw.trim().startsWith("{"));
+    if (isCsv) {
+      setCsvImport({ rawText: raw, filename: file.name });
+      return;
+    }
     const result = parseImport(raw);
     if (result.error) { alert(result.error); return; }
     if (!confirm("Replace current project with imported data? This cannot be undone.")) return;
     setState(result.project);
+  };
+
+  // Apply a CSV import: create any opt-in new members / categories /
+  // stakeholders first (so the drafts can reference their fresh IDs),
+  // then push each drafted task. Imported assignees seed talent +2 for
+  // that member so the existing assignment algorithm tends to honor the
+  // source-of-truth — it's a soft signal, not a hard pin; the algorithm
+  // can still re-route on capacity / pleasure if a better fit exists.
+  const commitCsvImport = (result) => {
+    update(s => {
+      const stamp = Date.now();
+      const newMemberIds = {};
+      result.newMembers.forEach((name, i) => {
+        const id = `m${stamp}-${i}`;
+        newMemberIds[name] = id;
+        s.members.push({
+          id, name, capacity: 0, categoryScores: {},
+          availability: weekdayNineToFive(),
+          windows: defaultWindows(),
+        });
+        // backfill scores on every existing task
+        s.tasks.forEach((t) => {
+          t.scores[id] = { pleasure: 0, talent: 0, difficulty: 3, autoFilled: true };
+        });
+      });
+
+      const newCategoryIds = {};
+      result.newCategories.forEach((name, i) => {
+        const id = `c${stamp}-${i}`;
+        newCategoryIds[name] = id;
+        s.categories.push({ id, name });
+      });
+
+      const newStakeholderIds = {};
+      result.newStakeholders.forEach((name, i) => {
+        const id = `s${stamp}-${i}`;
+        newStakeholderIds[name] = id;
+        s.stakeholders.push({ id, name });
+      });
+
+      if (result.replace) s.tasks = [];
+
+      result.drafts.forEach((d, i) => {
+        const id = `t${stamp}-${i}`;
+        const scores = {};
+        s.members.forEach((m) => {
+          scores[m.id] = { pleasure: 0, talent: 0, difficulty: 3, autoFilled: true };
+        });
+        // Honour the imported assignee as a soft preference.
+        let assigneeId = d.assigneeId || (d._newAssigneeName && newMemberIds[d._newAssigneeName]) || null;
+        if (assigneeId && scores[assigneeId]) {
+          scores[assigneeId] = { ...scores[assigneeId], talent: 2, autoFilled: false };
+        }
+        const categoryId = d.categoryId
+          || (d._newCategoryName && newCategoryIds[d._newCategoryName])
+          || null;
+        const stakeholderId = d.stakeholderId
+          || (d._newStakeholderName && newStakeholderIds[d._newStakeholderName])
+          || null;
+        s.tasks.push({
+          id,
+          title: d.title,
+          categoryId,
+          stakeholderId,
+          urgency: d.urgency,
+          importance: d.importance,
+          effort: d.effort,
+          dueDate: d.dueDate,
+          scores,
+        });
+      });
+      return s;
+    });
+    setCsvImport(null);
   };
 
   return (
@@ -967,7 +1050,7 @@ function AppInner() {
             <button onClick={exportProject} title="Export project as JSON" style={btnGhost} aria-label="Export project">
               <Download size={12} /> export
             </button>
-            <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={onImportFile} style={{ display: "none" }} />
+            <input ref={fileInputRef} type="file" accept="application/json,.json,text/csv,.csv" onChange={onImportFile} style={{ display: "none" }} />
             <button onClick={reset} title="Load demo data" style={btnGhost}>
               <RefreshCw size={12} /> demo
             </button>
@@ -1158,6 +1241,15 @@ function AppInner() {
       </footer>
 
       {customizeOpen && <CustomizePanel onClose={() => setCustomizeOpen(false)} />}
+      {csvImport && (
+        <CsvImportModal
+          rawText={csvImport.rawText}
+          filename={csvImport.filename}
+          project={state}
+          onClose={() => setCsvImport(null)}
+          onCommit={commitCsvImport}
+        />
+      )}
       <JoyMatrixChat
         state={state}
         summary={summary}
