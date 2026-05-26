@@ -95,6 +95,7 @@ export default function CsvImportModal({ rawText, filename, project, onClose, on
     }} onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
+        data-testid="csv-import-modal"
         style={{
           width: "min(720px, 100%)",
           background: COLORS.bone,
@@ -146,6 +147,7 @@ export default function CsvImportModal({ rawText, filename, project, onClose, on
                       {f.label}{f.required && <span style={{ color: COLORS.rust }}> *</span>}
                     </div>
                     <select
+                      data-testid={`csv-map-${f.key}`}
                       value={mapping[f.key] || ""}
                       onChange={(e) => setMapping((m) => ({ ...m, [f.key]: e.target.value || null }))}
                       style={{
@@ -265,6 +267,7 @@ export default function CsvImportModal({ rawText, filename, project, onClose, on
               <button
                 onClick={commit}
                 disabled={!canImport}
+                data-testid="csv-commit"
                 style={{ ...btnPrimary, opacity: canImport ? 1 : 0.4, cursor: canImport ? "pointer" : "not-allowed" }}
               >
                 <CheckCircle2 size={12} /> Import {built.drafts.length} task{built.drafts.length === 1 ? "" : "s"}

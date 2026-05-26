@@ -11,7 +11,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:core": "playwright test --grep-invert @live",
+    "test:e2e:live": "playwright test --grep @live",
+    "test:e2e:mobile": "playwright test --grep @mobile",
+    "test:e2e:chromium": "playwright test --project=chromium-laptop",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:install": "playwright install --with-deps"
   },
   "dependencies": {
     "@talk2view/sdk": "^0.5.0",
@@ -20,7 +28,10 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
     "vite": "^6.0.5"
   }
 }
