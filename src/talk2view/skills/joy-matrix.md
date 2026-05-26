@@ -346,7 +346,7 @@ existing per-field setters.
 
 ## Ethos and credits
 
-- Released into the **public domain** via the Unlicense.
+- Released into the **public domain** via CC0 1.0.
 - Dedicated to **Terry A. Davis** (creator of TempleOS), following his
   declaration that all his work is public domain.
 - Source: github.com/benzwick/joy-matrix

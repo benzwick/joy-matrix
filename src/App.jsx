@@ -1242,7 +1242,7 @@ function AppInner() {
           </span>
           <span>"software you can talk to…"</span>
         </a>
-        <div>© 2026 Benny Zwick. All rights reserved.</div>
+        <div>© 2026 Benny Zwick. Copyright waived under the Creative Commons Zero (CC0) License.</div>
       </footer>
 
       {customizeOpen && <CustomizePanel onClose={() => setCustomizeOpen(false)} />}

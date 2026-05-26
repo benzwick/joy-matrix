@@ -42,7 +42,7 @@ it for a `username.github.io/repo-name/` subpath deploy and set `base` in
 
 ## License
 
-The Joy Matrix is released into the **public domain** via the [Unlicense](./LICENSE).
+The Joy Matrix is released into the **public domain** via [CC0 1.0](./LICENSE).
 
 Use it. Fork it. Sell it. Strip the name off and ship it as your own. No
 attribution required, no permission needed, no strings.
