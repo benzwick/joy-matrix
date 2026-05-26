@@ -872,7 +872,7 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
       parameters: {
         type: "object",
         properties: {
-          name: { type: "string", enum: ["matrix", "team", "tasks", "schedule", "insights"] },
+          name: { type: "string", description: "Which tab to show. One of: matrix, team, tasks, schedule, insights." },
         },
         required: ["name"],
       },
@@ -932,23 +932,27 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
       parameters: {
         type: "object",
         properties: {
-          theme_id: { type: "string", description: "Preset id; one of the keys in PRESETS." },
-          mode: { type: "string", enum: ["light", "dark"] },
+          theme_id: { type: "string", description: "Theme preset: talk2view or workbook." },
+          mode: { type: "string", description: "Colour mode: light or dark." },
         },
       },
       execute: async (args) => {
-        if (args.theme_id !== undefined && !PRESETS[args.theme_id]) {
+        const themeId = args.theme_id !== undefined
+          ? Object.keys(PRESETS).find((k) => k.toLowerCase() === String(args.theme_id).toLowerCase())
+          : undefined;
+        if (args.theme_id !== undefined && !themeId) {
           return err(`Unknown theme "${args.theme_id}".`, { candidates: Object.keys(PRESETS) });
         }
-        if (args.mode !== undefined && !VALID_MODES.has(args.mode)) {
+        const mode = args.mode !== undefined ? String(args.mode).toLowerCase() : undefined;
+        if (mode !== undefined && !VALID_MODES.has(mode)) {
           return err(`Unknown mode "${args.mode}". Valid: light, dark.`);
         }
         setTheme((t) => ({
           ...t,
-          themeId: args.theme_id ?? t.themeId,
-          mode: args.mode ?? t.mode,
+          themeId: themeId ?? t.themeId,
+          mode: mode ?? t.mode,
         }));
-        return ok({ theme_id: args.theme_id, mode: args.mode });
+        return ok({ theme_id: themeId ?? null, mode: mode ?? null });
       },
     },
 
@@ -1013,11 +1017,12 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
       parameters: {
         type: "object",
         properties: {
-          section: { type: "string", description: "Documentation section to jump to.", enum: DOC_SECTIONS },
+          section: { type: "string", description: `Section to jump to. One of: ${DOC_SECTIONS.join(", ")}. Omit for the overview.` },
         },
       },
       execute: async (args) => {
-        const section = args.section && DOC_SECTIONS.includes(String(args.section)) ? String(args.section) : "";
+        const raw = String(args.section || "").toLowerCase();
+        const section = DOC_SECTIONS.includes(raw) ? raw : "";
         const base = import.meta.env.BASE_URL || "/";
         const url = `${base}docs/${section ? "#" + section : ""}`;
         if (typeof window !== "undefined") window.location.assign(url);
@@ -1102,7 +1107,7 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
       parameters: {
         type: "object",
         properties: {
-          slot: { type: "string", description: "Which colour slot to set.", enum: COLOR_SLOT_NAMES },
+          slot: { type: "string", description: `Which colour slot to set. One of: ${COLOR_SLOT_NAMES.join(", ")}.` },
           color: { type: "string", description: "CSS hex colour, e.g. #3aa89a or #abc." },
         },
         required: ["slot", "color"],
@@ -1126,7 +1131,7 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
       parameters: {
         type: "object",
         properties: {
-          slot: { type: "string", description: "Which font slot.", enum: ["head", "body", "mono"] },
+          slot: { type: "string", description: "Which font slot: head, body, or mono." },
           font: { type: "string", description: "Font family name (e.g. Fraunces, Geist, JetBrains Mono)." },
         },
         required: ["slot", "font"],
@@ -1151,7 +1156,7 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
       parameters: {
         type: "object",
         properties: {
-          target: { type: "string", description: "What to reset.", enum: ["colors", "fonts", "all"] },
+          target: { type: "string", description: "What to reset: colors, fonts, or all (default)." },
         },
       },
       execute: async (args) => {
