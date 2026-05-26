@@ -12,7 +12,7 @@
 //   { ok: false, error, candidates? }  failure (candidates listed when a
 //                                       name lookup was ambiguous)
 
-import { buildExportEnvelope, quadrantOf } from "../App";
+import { buildExportEnvelope, quadrantOf } from "../state.js";
 import { PRESETS } from "../ui/theme.jsx";
 import { clamp, findCategory, findMember, findStakeholder, findTask } from "./lookup";
 import { parseDueDateInput, formatDueDate, FUZZY_VALUES } from "../scheduling/dueDate";
