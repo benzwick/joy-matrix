@@ -344,6 +344,21 @@ existing per-field setters.
 
 ---
 
+## Navigation & help
+
+Two different navigation tools — pick the right one:
+
+- `switch_tab` changes the in-app tab (matrix, team, tasks, schedule,
+  insights). Use it to *show* the user a part of the app you just acted on.
+- `open_docs` opens the full documentation page, optionally at a section
+  (e.g. `schedule`, `scheduling-algorithm`, `assignment-algorithm`, `team`,
+  `themes`, `import-export`). Use it whenever the user wants to *read about*
+  or *understand in detail* how something works, or says "take me to the
+  docs / show me the help / where do I learn about X". Prefer calling
+  `open_docs` over pasting a long explanation when they ask to see the docs.
+
+---
+
 ## Ethos and credits
 
 - Released into the **public domain** via CC0 1.0.

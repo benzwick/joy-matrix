@@ -12,8 +12,8 @@
 //   { ok: false, error, candidates? }  failure (candidates listed when a
 //                                       name lookup was ambiguous)
 
-import { buildExportEnvelope, quadrantOf } from "../state.js";
-import { PRESETS } from "../ui/theme.jsx";
+import { buildExportEnvelope, parseImport, quadrantOf } from "../state.js";
+import { PRESETS, CUSTOMIZE_SLOTS, FONT_OPTIONS } from "../ui/theme.jsx";
 import { clamp, findCategory, findMember, findStakeholder, findTask } from "./lookup";
 import { parseDueDateInput, formatDueDate, FUZZY_VALUES } from "../scheduling/dueDate";
 import { parseRangesInput, DAYS, normaliseRanges, weekdayNineToFive } from "../scheduling/availability";
@@ -22,6 +22,19 @@ import { computeSchedule, hoursPerMember } from "../scheduling/schedule";
 
 const VALID_TABS = new Set(["matrix", "team", "tasks", "schedule", "insights"]);
 const VALID_MODES = new Set(["light", "dark"]);
+// Anchor ids in the documentation page (src/docs/DocsApp.jsx). open_docs jumps
+// the browser to /docs/#<section>.
+const DOC_SECTIONS = [
+  "overview", "philosophy", "concepts", "goal", "matrix", "team", "tasks",
+  "schedule", "insights", "assignment-algorithm", "scheduling-algorithm",
+  "themes", "import-export", "assistant",
+];
+// Friendly slot name (paper/ink/rust/teal/ochre) -> CSS variable the theme
+// override map keys on. Derived from the customize panel's slot list so the
+// two never drift.
+const COLOR_SLOT_KEYS = Object.fromEntries(CUSTOMIZE_SLOTS.map((s) => [s.label.toLowerCase(), s.key]));
+const COLOR_SLOT_NAMES = Object.keys(COLOR_SLOT_KEYS);
+const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 function ok(extra = {}) { return JSON.stringify({ ok: true, ...extra }); }
 function err(error, extra = {}) { return JSON.stringify({ ok: false, error, ...extra }); }
@@ -969,6 +982,190 @@ export function buildJoyMatrixTools({ getState, getDerived, update, setTab, setT
       execute: async () => {
         const envelope = buildExportEnvelope(getState());
         return ok({ json: JSON.stringify(envelope, null, 2) });
+      },
+    },
+
+    {
+      name: "import_project",
+      description:
+        "Replace the entire project with one from a Joy Matrix JSON export. Pass the full exported JSON string (the same format export_project returns). Destructive — requires user approval.",
+      permission: true,
+      parameters: {
+        type: "object",
+        properties: {
+          json: { type: "string", description: "The full Joy Matrix export JSON string." },
+        },
+        required: ["json"],
+      },
+      execute: async (args) => {
+        const result = parseImport(String(args.json ?? ""));
+        if (result.error) return err(result.error);
+        update(() => result.project);
+        return ok({ imported: true, members: result.project.members.length, tasks: result.project.tasks.length });
+      },
+    },
+
+    {
+      name: "open_docs",
+      description:
+        "Open the Joy Matrix documentation in the browser, optionally jumping to a section. Use this whenever the user wants to read the docs, see help, or get a detailed written explanation of how something works — as opposed to switch_tab, which only changes the in-app tab.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          section: { type: "string", description: "Documentation section to jump to.", enum: DOC_SECTIONS },
+        },
+      },
+      execute: async (args) => {
+        const section = args.section && DOC_SECTIONS.includes(String(args.section)) ? String(args.section) : "";
+        const base = import.meta.env.BASE_URL || "/";
+        const url = `${base}docs/${section ? "#" + section : ""}`;
+        if (typeof window !== "undefined") window.location.assign(url);
+        return ok({ url, section: section || "overview" });
+      },
+    },
+
+    {
+      name: "rename_member",
+      description: "Rename a team member.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Current member name." },
+          new_name: { type: "string", description: "New name." },
+        },
+        required: ["name", "new_name"],
+      },
+      execute: async (args) => {
+        const hit = findMember(getState(), args.name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const newName = String(args.new_name ?? "").trim();
+        if (!newName) return err("New name can't be empty.");
+        const id = hit.item.id;
+        update((s) => { const m = s.members.find((x) => x.id === id); if (m) m.name = newName; return s; });
+        return ok({ renamed: newName });
+      },
+    },
+
+    {
+      name: "rename_category",
+      description: "Rename a category.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Current category name." },
+          new_name: { type: "string", description: "New name." },
+        },
+        required: ["name", "new_name"],
+      },
+      execute: async (args) => {
+        const hit = findCategory(getState(), args.name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const newName = String(args.new_name ?? "").trim();
+        if (!newName) return err("New name can't be empty.");
+        const id = hit.item.id;
+        update((s) => { const c = (s.categories || []).find((x) => x.id === id); if (c) c.name = newName; return s; });
+        return ok({ renamed: newName });
+      },
+    },
+
+    {
+      name: "rename_stakeholder",
+      description: "Rename a stakeholder.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Current stakeholder name." },
+          new_name: { type: "string", description: "New name." },
+        },
+        required: ["name", "new_name"],
+      },
+      execute: async (args) => {
+        const hit = findStakeholder(getState(), args.name);
+        if (hit.error) return err(hit.error, { candidates: hit.candidates });
+        const newName = String(args.new_name ?? "").trim();
+        if (!newName) return err("New name can't be empty.");
+        const id = hit.item.id;
+        update((s) => { const x = (s.stakeholders || []).find((y) => y.id === id); if (x) x.name = newName; return s; });
+        return ok({ renamed: newName });
+      },
+    },
+
+    {
+      name: "set_theme_color",
+      description:
+        "Override one of the theme's five colour slots: paper (background), ink (text), rust (DO accent), teal (SCHEDULE accent), or ochre (DELEGATE accent). Pass a CSS hex colour like #3aa89a. Use reset_theme to clear overrides and return to the preset.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          slot: { type: "string", description: "Which colour slot to set.", enum: COLOR_SLOT_NAMES },
+          color: { type: "string", description: "CSS hex colour, e.g. #3aa89a or #abc." },
+        },
+        required: ["slot", "color"],
+      },
+      execute: async (args) => {
+        const slot = String(args.slot || "").toLowerCase();
+        const key = COLOR_SLOT_KEYS[slot];
+        if (!key) return err(`Unknown colour slot "${args.slot}". Valid: ${COLOR_SLOT_NAMES.join(", ")}.`);
+        const color = String(args.color || "").trim();
+        if (!HEX_RE.test(color)) return err(`"${args.color}" isn't a valid hex colour (e.g. #3aa89a).`);
+        setTheme((t) => ({ ...t, overrides: { ...(t.overrides || {}), [key]: color } }));
+        return ok({ slot, color });
+      },
+    },
+
+    {
+      name: "set_theme_font",
+      description:
+        "Set the font for one slot: head (headings), body (prose), or mono (labels / monospace). Fonts load from Google Fonts on demand. Returns the available options if the font name isn't one of them.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          slot: { type: "string", description: "Which font slot.", enum: ["head", "body", "mono"] },
+          font: { type: "string", description: "Font family name (e.g. Fraunces, Geist, JetBrains Mono)." },
+        },
+        required: ["slot", "font"],
+      },
+      execute: async (args) => {
+        const slot = String(args.slot || "").toLowerCase();
+        const options = FONT_OPTIONS[slot];
+        if (!options) return err(`Unknown font slot "${args.slot}". Valid: head, body, mono.`);
+        const font = String(args.font || "").trim();
+        const match = options.find((f) => f.toLowerCase() === font.toLowerCase());
+        if (!match) return err(`"${args.font}" isn't an available ${slot} font.`, { candidates: options });
+        setTheme((t) => ({ ...t, fonts: { ...(t.fonts || {}), [slot]: match } }));
+        return ok({ slot, font: match });
+      },
+    },
+
+    {
+      name: "reset_theme",
+      description:
+        "Reset theme customisations back to the active preset's defaults. target \"colors\" clears colour overrides, \"fonts\" clears font picks, \"all\" (default) clears both. Does not change the preset or light/dark mode — use set_theme for those.",
+      permission: false,
+      parameters: {
+        type: "object",
+        properties: {
+          target: { type: "string", description: "What to reset.", enum: ["colors", "fonts", "all"] },
+        },
+      },
+      execute: async (args) => {
+        const target = String(args.target || "all").toLowerCase();
+        if (!["colors", "fonts", "all"].includes(target)) {
+          return err(`Unknown reset target "${args.target}". Valid: colors, fonts, all.`);
+        }
+        setTheme((t) => {
+          const next = { ...t };
+          if (target === "colors" || target === "all") next.overrides = {};
+          if (target === "fonts" || target === "all") next.fonts = {};
+          return next;
+        });
+        return ok({ reset: target });
       },
     },
   ];
