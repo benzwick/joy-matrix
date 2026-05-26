@@ -1,5 +1,9 @@
 # The Joy Matrix
 
+[![CI](https://github.com/benzwick/joy-matrix/actions/workflows/ci.yml/badge.svg)](https://github.com/benzwick/joy-matrix/actions/workflows/ci.yml)
+[![E2E](https://github.com/benzwick/joy-matrix/actions/workflows/e2e.yml/badge.svg)](https://github.com/benzwick/joy-matrix/actions/workflows/e2e.yml)
+[![Deploy to GitHub Pages](https://github.com/benzwick/joy-matrix/actions/workflows/deploy.yml/badge.svg)](https://github.com/benzwick/joy-matrix/actions/workflows/deploy.yml)
+
 The Joy Matrix is a multidimensional extension
 of The Eisenhower Matrix for team projects
 that scores tasks by pleasure, talent, and capacity
