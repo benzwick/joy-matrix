@@ -30,6 +30,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Regenerate the documentation screenshots from the live app so they're
+      # always current, then build — `vite build` copies public/screenshots/
+      # into dist/screenshots/. Non-fatal: a transient capture failure should
+      # never block deploying the app; the docs page degrades to placeholders.
+      - name: Install Playwright (chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate documentation screenshots
+        run: npm run screenshots
+        continue-on-error: true
+
       - name: Build
         run: npm run build
 

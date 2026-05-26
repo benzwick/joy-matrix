@@ -15,3 +15,6 @@ dist-ssr
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Auto-generated documentation screenshots (regenerated on deploy)
+/public/screenshots/
